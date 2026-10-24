@@ -864,31 +864,62 @@
     return fetch(url, options);
   }
 
-  async function createVideoTask(imageDataUri, prompt){
-    const body = {
-      model: VIDEO_MODEL,
-      prompt: prompt,
-      image: imageDataUri,
-      num_frames: state.durationFrames,
-      frame_rate: FRAME_RATE
-    };
-    const res = await apiFetch(API_BASE + '/videos', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + getKey(),
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body)
-    }, 'Création');
-    if(!res.ok){
-      const err = await res.text();
-      throw new Error('HTTP '+res.status+' — '+err.slice(0,200));
+  
+async function apiFetch(url, options, label = 'API') {
+  const waits = [5, 10, 20, 30];
+
+  for (let attempt = 0; attempt < waits.length; attempt++) {
+    if (state.stopRequested) {
+      throw new Error('Arrêt demandé');
     }
-    const data = await res.json();
-    const id = data.video_id || data.id || data.task_id;
-    if(!id) throw new Error('Pas de video_id retourné');
-    return id;
+
+    let response;
+
+    try {
+      response = await fetch(url, options);
+    } catch (error) {
+      if (state.stopRequested) {
+        throw new Error('Arrêt demandé');
+      }
+
+      if (attempt === waits.length - 1) {
+        throw new Error(
+          `${label} : erreur réseau. Vérifie la connexion.`
+        );
+      }
+
+      const wait = waits[attempt];
+      log(
+        `${label} : erreur réseau, nouvel essai dans ${wait}s`,
+        'warn'
+      );
+
+      await sleep(wait * 1000);
+      continue;
+    }
+
+    // Succès ou erreur qui ne doit pas être retentée ici.
+    if (response.ok || ![429, 500, 502, 503, 504].includes(response.status)) {
+      return response;
+    }
+
+    // Erreurs temporaires : limitation ou serveur indisponible.
+    if (attempt === waits.length - 1) {
+      return response;
+    }
+
+    const wait = waits[attempt];
+
+    log(
+      `${label} : HTTP ${response.status}, nouvel essai dans ${wait}s`,
+      'warn'
+    );
+
+    await sleep(wait * 1000);
   }
+
+  throw new Error(`${label} : nombre maximal de tentatives atteint.`);
+}
 
   async function pollVideo(videoId, onProgress){
     const estSec = estimateGenerationTime(state.durationFrames) / 1000;
