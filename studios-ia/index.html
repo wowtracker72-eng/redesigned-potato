@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Studios IA</title>
+<link rel="stylesheet" href="commun/studio.css">
+<style>
+.hero{padding:26px 0 8px}
+.hero h1{font-size:1.6rem;margin:0 0 4px}
+.cat{margin:22px 0 8px;color:var(--dim);font-size:.78rem;letter-spacing:.08em;text-transform:uppercase}
+.list{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.st{display:flex;gap:12px;text-decoration:none;color:var(--ink);margin:0;transition:border-color .15s}
+.st:hover{border-color:var(--acc)}
+.st .ic{font-size:1.9rem;line-height:1}
+.st h3{margin:0 0 3px;font-size:.98rem}
+.st p{margin:0;color:var(--dim);font-size:.82rem}
+.st small{display:block;color:var(--faint);font-size:.72rem;margin-top:5px}
+</style>
+</head>
+<body>
+<main>
+  <div class="hero">
+    <h1>🎬 Studios IA</h1>
+    <p class="hint">12 outils autonomes pour créer images, vidéos et films avec l'API Agnès. Vos clés sont saisies une seule fois et partagées par tous les studios (stockées dans ce navigateur uniquement).</p>
+    <div class="actions"><button class="btn primary" id="keys">🔑 Mes clés API</button><span class="hint" id="kinfo"></span></div>
+  </div>
+  <div id="cats"></div>
+</main>
+<script src="commun/agnes.js"></script>
+<script>
+'use strict';
+const STUDIOS = [
+  ['Films et histoires', [
+    ['film-ia.html', '🎬', 'Film IA', 'Idée ou photos → scénario → plans → court-métrage narré. Modes automatique, guidé ou scénario libre.', 'remplace Kata Studio, Studio d\'Auteur, Ciné Studio, ViMax'],
+    ['plan-sequence.html', '🎞️', 'Plan-Séquence', 'Une photo → un film continu en un seul plan (ou un montage), sur l\'actualité ou votre histoire.', 'remplace les 6 versions Plan-Séquence (v15 à v26)'],
+    ['dessin-anime.html', '✏️', 'Dessin Animé', 'De l\'idée à l\'écran : fiche personnage, scènes dessinées et animées, narration.', 'remplace Dessin Animé IA'],
+    ['storyboard-google-flow.html', '🗂️', 'Storyboard Google Flow', 'Scénario → jusqu\'à 100 plans avec première image et prompt vidéo Veo prêt à coller.', 'remplace Film Storyboard Lab']
+  ]],
+  ['Actualité', [
+    ['jt-actualite.html', '📺', 'JT Actualité', 'Les titres du jour → un journal télévisé filmé, style de réalisateur et palette au choix.', 'remplace NewsReel Studio et Cinéma Studio (JT, News × Réalisateurs)'],
+    ['journal-visuel.html', '📰', 'Journal Visuel', 'Une image de référence définit le style d\'un journal : discours éditorial ou Chœur intellectuel.', 'remplace VISUAL.JOURNAL, Journal Visuel, Chœur intellectuel']
+  ]],
+  ['Images', [
+    ['studio-photo.html', '📸', 'Studio Photo', 'Photo → blocs de styles, reconstructions, personnages, décors, histoire → film. Sessions et favoris.', 'remplace les 8 variantes « Studio », Portrait 9:16 et 50 Styles Lab'],
+    ['copies-image.html', '🧬', 'Copies d\'Image', 'Une image → lots de copies fidèles, structurées ou restylées, + variations.', 'remplace Copy Studio'],
+    ['transfert-style.html', '🎨', 'Transfert de Style', 'Analyse le style d\'une image, l\'applique à vos photos puis les anime.', 'remplace Style Studio'],
+    ['scenes-multi-angles.html', '🎥', 'Scènes Multi-Angles', 'Une scène avec vos personnages filmée sous jusqu\'à 40 angles de caméra.', 'remplace Scene Studio']
+  ]],
+  ['Vidéo et outils', [
+    ['photos-en-videos.html', '🎥', 'Photos en Vidéos', 'Chaque image devient un clip animé, l\'IA adapte le mouvement à chaque photo.', 'remplace MoneyPrinterTurbo · Agnès'],
+    ['generateur-applications.html', '⚒️', 'Générateur d\'Applications', 'Décrivez une appli IA en une phrase : formulaire et étapes générés, sauvegarde et partage.', 'remplace APPFORGE']
+  ]]
+];
+const esc = AG.esc;
+document.getElementById('cats').innerHTML = STUDIOS.map(([cat, list]) => '<div class="cat">' + esc(cat) + '</div><div class="list">' + list.map(s => '<a class="card st" href="' + s[0] + '"><span class="ic">' + s[1] + '</span><span><h3>' + esc(s[2]) + '</h3><p>' + esc(s[3]) + '</p><small>' + esc(s[4]) + '</small></span></a>').join('') + '</div>').join('');
+AG.shell({ icon: '🏠', title: 'Accueil', subtitle: 'Choisissez un studio' });
+document.querySelector('.ag-home').hidden = true;
+const info = () => { document.getElementById('kinfo').textContent = AG.keyCount ? AG.keyCount + ' clé(s) active(s)' : 'Aucune clé enregistrée'; };
+document.getElementById('keys').onclick = () => document.getElementById('ag-keys-btn').click();
+document.getElementById('ag-keys').addEventListener('close', info); info();
+</script>
+</body>
+</html>

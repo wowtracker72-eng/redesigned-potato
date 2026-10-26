@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JT Actualité</title>
+<link rel="stylesheet" href="commun/studio.css">
+</head>
+<body>
+<main>
+  <div class="cols">
+    <section>
+      <div class="card">
+        <h2>1 · Actualités</h2>
+        <div class="row2">
+          <label>Rubrique<select id="topic"><option value="une">🌍 À la une</option><option value="france">🇫🇷 France</option><option value="monde">🌐 International</option><option value="business">💼 Économie</option><option value="tech">💻 Technologie</option><option value="science">🔬 Science</option><option value="sante">🏥 Santé</option><option value="sport">⚽ Sport</option><option value="culture">🎬 Culture</option></select></label>
+          <label>Nombre d'infos<select id="count"><option value="3">3 — court</option><option value="5" selected>5 — standard</option><option value="7">7 — complet</option><option value="10">10 — long</option></select></label>
+        </div>
+        <div class="actions"><button class="btn small" id="fetch">↻ Charger les titres</button><span class="hint" id="newsinfo"></span></div>
+        <div id="news" class="hint"></div>
+      </div>
+      <div class="card">
+        <h2>2 · Réalisation</h2>
+        <label>Style de réalisation</label>
+        <select id="style"></select>
+        <label>Palette dominante</label>
+        <select id="palette"></select>
+        <label>Présentateur (photo facultative)</label>
+        <div class="drop" id="drop">🧑‍💼 Photo du présentateur<div class="thumbs" id="thumbs"></div></div>
+        <div class="row3">
+          <label>Durée / plan<select id="secs"><option value="5">5 s</option><option value="6" selected>6 s</option><option value="10">10 s</option></select></label>
+          <label>Mouvement<select id="motion"><option value="subtle, contemplative camera">Subtil</option><option value="elegant, smooth camera moves" selected>Modéré</option><option value="dynamic, cinematic camera moves, energetic">Fort</option></select></label>
+          <label>Format<select id="ratio"><option value="9:16">9:16</option><option value="16:9">16:9</option></select></label>
+        </div>
+        <label class="check"><input type="checkbox" id="videos" checked> Animer en vidéo</label>
+        <div class="actions"><button class="btn primary big" id="go">📺 Produire le JT</button></div>
+        <div class="actions"><button class="btn danger" id="stop" hidden>■ Arrêter</button><button class="btn" id="play" disabled>▶ Diffuser</button><button class="btn ghost" id="dl" disabled>⬇ Tout télécharger</button><button class="btn ghost" id="cp" disabled>📋 Copier le conducteur</button></div>
+      </div>
+    </section>
+    <section>
+      <div class="card">
+        <div class="steps" id="steps"></div>
+        <div class="bar"><i id="bar"></i></div>
+        <div class="status"><span class="pill" id="pill">prêt</span><span id="status">Choisissez une rubrique puis produisez le journal.</span></div>
+        <h3 id="title"></h3>
+      </div>
+      <div class="grid" id="board"><div class="empty">Le conducteur du JT apparaîtra ici.</div></div>
+    </section>
+  </div>
+</main>
+<script src="commun/agnes.js"></script>
+<script>
+'use strict';
+const { $, esc } = AG;
+AG.shell({ icon: '📺', title: 'JT Actualité', subtitle: 'Les titres du jour → un journal télévisé filmé, style au choix' });
+const STEPS = ['Actualités', 'Conducteur', 'Images', 'Vidéos'];
+const STYLES = [
+  ['Plateau TV moderne — réaliste, net, lumineux', 'modern French TV newsroom look, realistic, crisp broadcast lighting'],
+  ['Wes Anderson — symétrie pop, décors miniatures', 'Wes Anderson style: perfect symmetry, pastel pop palette, deadpan staging, miniature-like sets'],
+  ['Stanley Kubrick — perspective centrale, tension', 'Stanley Kubrick style: one-point perspective, cold geometry, clinical tension'],
+  ['David Fincher — cadres précis, texture urbaine', 'David Fincher style: precise framing, desaturated urban texture, controlled contrast'],
+  ['Denis Villeneuve — monumental, atmosphérique', 'Denis Villeneuve style: monumental scale, atmospheric haze, vast negative space'],
+  ['Christopher Nolan — réalisme spectaculaire', 'Christopher Nolan style: IMAX realism, practical spectacle, large scale'],
+  ['Wong Kar-wai — néons, ralentis, mélancolie', 'Wong Kar-wai style: saturated neon, step-printed motion blur, melancholic intimacy'],
+  ['Akira Kurosawa — épique, météo dramatique', 'Akira Kurosawa style: epic wide compositions, dramatic weather, telephoto depth'],
+  ['Studio Ghibli — aquarelle animée, poésie', 'Studio Ghibli hand-painted animation style, soft watercolor skies, poetic detail'],
+  ['Moebius — BD SF, ligne claire, déserts', 'Moebius / Jean Giraud comic style: clean line, vast alien deserts, pastel sci-fi'],
+  ['Hergé — ligne claire, aplats francs', 'Herge ligne claire comic style: clean outlines, flat bright colors'],
+  ['Manga cyberpunk — encrage nerveux, néons', 'cyberpunk manga style: nervous inking, neon lights, explosive perspective'],
+  ['Anime années 80 — cel shading rétro', '1980s anime cel-shaded style, electric colors, retro mecha details'],
+  ['Noir néon — clair-obscur coloré, pluie', 'neon noir: colored chiaroscuro, artificial rain, graphic silhouettes'],
+  ['Mockumentaire rétrofuturiste — faux reportage', 'retro-futuristic mockumentary: serious fake news report, absurd situations, 1960s optics'],
+  ['VHS futuriste — chroma, aberrations', 'futuristic VHS look: intense chroma, optical aberrations, analog gadgets'],
+  ['Stop-motion surréaliste — matières physiques', 'surreal stop-motion: tactile handmade textures, impossible proportions'],
+  ['Shaw Brothers — kung-fu années 70', '1970s Shaw Brothers kung-fu film look: zooms, saturated sets, film grain'],
+  ['Sergio Leone — très gros plans, western', 'Sergio Leone western style: extreme close-ups, wide desert vistas, harsh sun'],
+  ['Jean-Pierre Jeunet — tons ambrés, fantaisie', 'Jean-Pierre Jeunet style: amber-green grading, whimsical wide-angle close-ups']
+];
+const PALETTES = [['Libre (selon le style)', ''], ['Corail électrique & cyan', 'electric coral and cyan'], ['Lime acide & violet', 'acid lime and violet'], ['Turquoise & orange solaire', 'turquoise and solar orange'], ['Fuchsia & jaune laser', 'fuchsia and laser yellow'], ['Cobalt & mandarine', 'cobalt blue and mandarin'], ['Émeraude & rose fluo', 'emerald and fluorescent pink'], ['Rouge signal & cyan', 'signal red and cyan'], ['Or électrique & azur', 'electric gold and azure'], ['Magenta & turquoise', 'magenta and turquoise'], ['Bleu royal & lime', 'royal blue and lime'], ['Cuivre & bleu électrique', 'copper and electric blue'], ['Noir & blanc', 'black and white, high contrast']];
+$('style').innerHTML = STYLES.map((s, i) => '<option value="' + i + '">' + esc(s[0]) + '</option>').join('');
+$('palette').innerHTML = PALETTES.map((s, i) => '<option value="' + i + '">' + esc(s[0]) + '</option>').join('');
+const S = { anchor: null, news: [], jt: null, segs: [] };
+
+AG.dropzone($('drop'), ([u]) => { S.anchor = u; $('thumbs').innerHTML = '<figure><img src="' + u + '"><button data-x>✕</button></figure>'; });
+$('thumbs').onclick = e => { if (e.target.matches('[data-x]')) { e.stopPropagation(); S.anchor = null; $('thumbs').innerHTML = ''; } };
+
+async function loadNews() {
+  $('newsinfo').textContent = 'chargement…';
+  try { S.news = await AG.news($('topic').value, 25); }
+  catch (e) { S.news = []; AG.log('err', 'Actualités : ' + e.message); }
+  $('newsinfo').textContent = S.news.length ? S.news.length + ' titres' : 'aucun titre (réseau ?)';
+  $('news').innerHTML = S.news.slice(0, 8).map(n => '• ' + esc(n.title)).join('<br>');
+  return S.news;
+}
+$('fetch').onclick = loadNews;
+$('topic').onchange = () => { S.news = []; $('news').innerHTML = ''; $('newsinfo').textContent = ''; };
+
+const draw = AG.throttle(() => {
+  if (!S.jt) return;
+  $('board').innerHTML = S.segs.map((s, i) => AG.tile({ id: i, label: s.kind + (s.headline ? ' · ' + s.headline : ''), text: s.narration, img: s.img, video: s.video, st: s.st, msg: s.msg }, { ratio: S.ratio, retry: true, tools: [{ a: 'redo', label: '↻' }, { a: 'dl', label: '⬇', when: it => it.video || it.img }] })).join('');
+  const im = S.segs.filter(s => s.img).length, vd = S.segs.filter(s => s.video).length, n = S.segs.length || 1;
+  $('bar').style.width = Math.round(S.withVideo ? im / n * 35 + vd / n * 65 : im / n * 100) + '%';
+  $('play').disabled = !vd; $('dl').disabled = !(vd || im); $('cp').disabled = false;
+});
+function setStatus(t, p) { $('status').textContent = t; $('pill').textContent = p || 'en cours'; $('pill').className = 'pill ' + (p === 'terminé' ? 'ok' : p === 'erreur' ? 'err' : 'run'); }
+function busy(on) { $('go').disabled = on; $('fetch').disabled = on; $('stop').hidden = !on; }
+
+async function writeJT(count) {
+  const date = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const user = 'Date : ' + date + '.\nTITRES DISPONIBLES (seule source autorisée ; n\'invente aucun fait, chiffre, nom ni citation) :\n' + S.news.map((n, i) => (i + 1) + '. ' + n.title + (n.desc ? ' — ' + n.desc : '')).join('\n')
+    + '\n\nChoisis les ' + count + ' informations les plus importantes et variées. Écris le conducteur d\'un JT :'
+    + '\n- 1 segment "OUVERTURE" (présentateur en plateau : bonsoir, date, sommaire)'
+    + '\n- pour chaque info : 1 segment "REPORTAGE" (images de terrain illustrant le fait, sans montrer de vraie personne identifiable)'
+    + '\n- 1 segment "CLÔTURE" (présentateur : conclusion et au revoir)'
+    + '\nChaque segment : "kind", "headline" (titre court FR), "narration" (voix off FR, 15 à 25 mots, ton journalistique), "image" (prompt ANGLAIS 40-70 mots : scène, lieu, lumière, cadrage), "motion" (prompt ANGLAIS : action + caméra, 15-30 mots).'
+    + '\nJSON : {"title":"","segments":[{"kind":"","headline":"","narration":"","image":"","motion":""}]}';
+  const j = await AG.chatJSON({ system: 'Rédacteur en chef d\'un journal télévisé français, rigoureux et factuel. JSON strict.', user, max: 8000, temp: 0.6 });
+  const segs = Array.isArray(j.segments) ? j.segments : [];
+  if (segs.length < 2) throw new Error('Conducteur incomplet. Réessayez.');
+  return { title: j.title || 'Le journal', segs: segs.map(s => ({ kind: String(s.kind || 'REPORTAGE').toUpperCase(), headline: s.headline || '', narration: s.narration || '', image: s.image || s.headline || '', motion: s.motion || 'slow camera move', st: 'wait' })) };
+}
+const isAnchor = s => /OUVERTURE|CLÔTURE|CLOTURE|PLATEAU/.test(s.kind);
+function imgPrompt(s) {
+  const st = STYLES[+$('style').value][1], pal = PALETTES[+$('palette').value][1];
+  const who = isAnchor(s) ? (S.anchor ? 'News anchor = the person of the reference photo (identical face), seated at a modern news desk facing camera. ' : 'A professional news anchor at a modern news desk facing camera. ') : '';
+  return who + s.image + '. ' + st + (pal ? '. Dominant color palette: ' + pal : '') + '. Cinematic composition. No text, no captions, no logos, no watermark.';
+}
+async function makeSeg(s, i) {
+  try {
+    if (!s.img) { s.st = 'run'; s.msg = 'image'; draw(); s.img = await AG.image(imgPrompt(s), { refs: isAnchor(s) && S.anchor ? [S.anchor] : [], ratio: S.ratio }); }
+    if (S.withVideo) {
+      s.st = 'run'; s.msg = 'vidéo'; draw();
+      s.video = await AG.video(s.motion + '. ' + $('motion').value + '. ' + STYLES[+$('style').value][1] + '. ' + (isAnchor(s) ? 'The anchor speaks naturally to camera. ' : '') + 'No music, no on-screen text, no subtitles.', { first: s.img, seconds: S.secs, ratio: S.ratio, onProgress: m => { s.msg = m; draw(); } });
+    }
+    s.st = 'ok'; s.msg = '';
+  } catch (e) {
+    if (AG.isStop(e)) { s.st = s.img ? 'ok' : 'wait'; throw e; }
+    if (e.fatal) throw e;
+    s.st = 'err'; s.msg = e.message.slice(0, 60); AG.log('err', 'Segment ' + (i + 1) + ' : ' + e.message);
+  } finally { draw(); }
+}
+async function pipeline() {
+  S.secs = +$('secs').value; S.ratio = $('ratio').value; S.withVideo = $('videos').checked;
+  AG.steps($('steps'), STEPS, 0); setStatus('Lecture des actualités…');
+  if (!S.news.length) await loadNews();
+  if (!S.news.length) throw new Error('Aucune actualité récupérée. Vérifiez la connexion puis réessayez.');
+  AG.steps($('steps'), STEPS, 1); setStatus('Écriture du conducteur…');
+  S.jt = await writeJT(+$('count').value); S.segs = S.jt.segs;
+  $('title').textContent = S.jt.title; draw();
+  AG.steps($('steps'), STEPS, 2); setStatus('Tournage des segments…');
+  await AG.pool(S.segs, S.withVideo ? S.segs.length : AG.imgLimit(), makeSeg);
+  AG.steps($('steps'), STEPS, 4);
+  const ok = S.segs.filter(s => s.st === 'ok').length;
+  setStatus(ok + ' / ' + S.segs.length + ' segments prêts', 'terminé');
+}
+$('go').onclick = () => AG.job(pipeline, busy);
+$('stop').onclick = () => AG.run.stop();
+$('board').onclick = e => {
+  const b = e.target.closest('[data-a]'); if (!b) return;
+  const i = +b.dataset.id, s = S.segs[i];
+  if (b.dataset.a === 'dl') return AG.download(s.video || s.img, 'jt-' + String(i + 1).padStart(2, '0') + (s.video ? '.mp4' : '.jpg'));
+  s.img = null; s.video = null; AG.job(() => makeSeg(s, i), busy);
+};
+$('play').onclick = () => AG.playFilm(S.segs.map(s => ({ url: s.video, text: s.narration, title: s.headline })));
+$('dl').onclick = () => AG.downloadAll(S.segs.map((s, i) => (s.video || s.img) && { url: s.video || s.img, name: 'jt-' + String(i + 1).padStart(2, '0') + (s.video ? '.mp4' : '.jpg') }).filter(Boolean));
+$('cp').onclick = () => AG.copy(S.jt.title + '\n\n' + S.segs.map((s, i) => (i + 1) + '. ' + s.kind + ' — ' + s.headline + '\n' + s.narration).join('\n\n'));
+AG.steps($('steps'), STEPS, -1);
+</script>
+</body>
+</html>

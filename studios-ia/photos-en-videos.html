@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Photos en Vidéos</title>
+<link rel="stylesheet" href="commun/studio.css">
+</head>
+<body>
+<main>
+  <div class="cols">
+    <section>
+      <div class="card">
+        <h2>1 · Vos images</h2>
+        <div class="drop" id="drop">🖼️ Ajouter des images (12 max)<br><small>cliquer, glisser ou coller</small></div>
+        <p class="hint" id="count">Aucune image.</p>
+      </div>
+      <div class="card">
+        <h2>2 · Animation</h2>
+        <label>Consigne commune (appliquée à toutes les images)</label>
+        <textarea id="prompt" rows="3" placeholder="La personne sourit et se tourne doucement vers la caméra…"></textarea>
+        <label>Effet visuel (facultatif)</label>
+        <select id="fx"><option value="">Aucun</option><option value="slow motion, dreamy">Ralenti onirique</option><option value="golden hour sunlight flares">Lumière dorée</option><option value="light rain and reflections">Pluie légère</option><option value="falling snow">Neige</option><option value="floating dust particles in light beams">Particules lumineuses</option><option value="neon city lights glow">Néons</option><option value="vintage film grain and light leaks">Film vintage</option></select>
+        <div class="row3">
+          <label>Durée<select id="secs"><option value="5" selected>5 s</option><option value="6">6 s</option><option value="10">10 s</option></select></label>
+          <label>Caméra<select id="cam"><option value="static camera">Fixe</option><option value="slow push-in" selected>Zoom avant lent</option><option value="slow pull-back">Recul lent</option><option value="gentle orbit around the subject">Orbite</option><option value="handheld documentary camera">Caméra épaule</option><option value="slow lateral tracking">Travelling</option></select></label>
+          <label>Format<select id="ratio"><option value="9:16">9:16</option><option value="16:9">16:9</option><option value="1:1">1:1</option></select></label>
+        </div>
+        <label>Intensité du mouvement</label>
+        <select id="intensity"><option value="subtle, minimal movement">Subtile</option><option value="natural, moderate movement" selected>Modérée</option><option value="strong, dynamic movement">Forte</option></select>
+        <label class="check"><input type="checkbox" id="smart" checked> L'IA regarde chaque image et adapte le mouvement</label>
+        <div class="actions"><button class="btn primary big" id="go">🚀 Créer les vidéos</button></div>
+        <div class="actions"><button class="btn danger" id="stop" hidden>■ Arrêter</button><button class="btn" id="play" disabled>▶ Tout lire</button><button class="btn ghost" id="dl" disabled>⬇ Tout télécharger</button><button class="btn ghost" id="clear">🗑 Vider</button></div>
+      </div>
+    </section>
+    <section>
+      <div class="card">
+        <div class="bar"><i id="bar"></i></div>
+        <div class="status"><span class="pill" id="pill">prêt</span><span id="status">Ajoutez des images.</span></div>
+      </div>
+      <div class="grid" id="board"><div class="empty">Vos images et leurs vidéos apparaîtront ici.</div></div>
+    </section>
+  </div>
+</main>
+<script src="commun/agnes.js"></script>
+<script>
+'use strict';
+const { $ } = AG;
+AG.shell({ icon: '🎥', title: 'Photos en Vidéos', subtitle: 'Chaque image devient un clip animé, avec une consigne commune' });
+const S = { items: [] };
+$('prompt').value = AG.store.get('pv_prompt', ''); $('prompt').oninput = () => AG.store.set('pv_prompt', $('prompt').value);
+AG.dropzone($('drop'), list => { list.forEach(u => S.items.length < 12 && S.items.push({ id: AG.uid(), img: u, st: 'wait' })); draw(); }, true);
+
+const draw = AG.throttle(() => {
+  $('count').textContent = S.items.length ? S.items.length + ' image(s) · ' + S.items.filter(x => x.video).length + ' vidéo(s)' : 'Aucune image.';
+  $('board').innerHTML = S.items.length ? S.items.map((x, i) => AG.tile({ id: x.id, label: '#' + (i + 1), text: x.motion, img: x.img, video: x.video, st: x.st, msg: x.msg }, { ratio: $('ratio').value, retry: true, tools: [{ a: 'redo', label: '↻', when: it => it.st !== 'run' }, { a: 'dl', label: '⬇', when: it => it.video }, { a: 'rm', label: '✕', when: it => it.st !== 'run' }] })).join('') : '<div class="empty">Vos images et leurs vidéos apparaîtront ici.</div>';
+  const n = S.items.length || 1, vd = S.items.filter(x => x.video).length;
+  $('bar').style.width = Math.round(vd / n * 100) + '%';
+  $('play').disabled = !vd; $('dl').disabled = !vd;
+});
+function busy(on) { $('go').disabled = on; $('clear').disabled = on; $('stop').hidden = !on; $('pill').textContent = on ? 'en cours' : 'prêt'; $('pill').className = 'pill ' + (on ? 'run' : ''); }
+
+async function motionFor(x) {
+  const base = [$('prompt').value.trim(), $('cam').value, $('intensity').value, $('fx').value].filter(Boolean).join(', ');
+  if (!$('smart').checked) return base || 'natural subtle movement, ' + $('cam').value;
+  try {
+    const t = await AG.chat({ system: 'You write short prompts for image-to-video AI. Answer with the prompt only, in English, 25-45 words.', user: 'Write the motion prompt to animate this image. Respect this instruction: "' + (base || 'natural cinematic movement') + '". Describe what moves (people, hair, fabric, water, light…) and the camera. Keep the subject identical.', images: [x.img], max: 300, temp: 0.6 });
+    return t.replace(/^["']|["']$/g, '').trim() || base;
+  } catch (e) { if (AG.isStop(e) || e.fatal) throw e; AG.log('warn', 'Analyse image : ' + e.message); return base; }
+}
+async function animate(x) {
+  try {
+    x.st = 'run'; x.msg = 'analyse'; x.video = null; draw();
+    x.motion = await motionFor(x);
+    x.msg = 'vidéo'; draw();
+    x.video = await AG.video(x.motion + '. Keep the subject, faces and style identical to the image. No text, no watermark.', { first: x.img, seconds: +$('secs').value, ratio: $('ratio').value, onProgress: m => { x.msg = m; draw(); } });
+    x.st = 'ok'; x.msg = '';
+  } catch (e) {
+    if (AG.isStop(e)) { x.st = 'wait'; throw e; }
+    if (e.fatal) throw e;
+    x.st = 'err'; x.msg = e.message.slice(0, 60); AG.log('err', e.message);
+  } finally { draw(); }
+}
+$('go').onclick = () => {
+  const todo = S.items.filter(x => !x.video);
+  if (!S.items.length) return AG.toast('Ajoutez au moins une image', 'err');
+  if (!todo.length) return AG.toast('Toutes les vidéos sont déjà prêtes');
+  AG.job(async () => { $('status').textContent = todo.length + ' vidéo(s) en création…'; await AG.pool(todo, todo.length, animate); $('status').textContent = S.items.filter(x => x.video).length + ' / ' + S.items.length + ' vidéos prêtes'; }, busy);
+};
+$('stop').onclick = () => AG.run.stop();
+$('clear').onclick = () => { S.items = []; draw(); };
+$('board').onclick = e => {
+  const b = e.target.closest('[data-a]'); if (!b) return;
+  const x = S.items.find(y => y.id === b.dataset.id); if (!x) return;
+  if (b.dataset.a === 'dl') return AG.download(x.video, 'video-' + (S.items.indexOf(x) + 1) + '.mp4');
+  if (b.dataset.a === 'rm') { S.items.splice(S.items.indexOf(x), 1); return draw(); }
+  AG.job(() => animate(x), busy);
+};
+$('play').onclick = () => AG.playFilm(S.items.map(x => ({ url: x.video })));
+$('dl').onclick = () => AG.downloadAll(S.items.map((x, i) => x.video && { url: x.video, name: 'video-' + (i + 1) + '.mp4' }).filter(Boolean));
+$('ratio').onchange = draw;
+draw();
+</script>
+</body>
+</html>

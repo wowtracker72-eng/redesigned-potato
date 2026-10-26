@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Générateur d'Applications</title>
+<link rel="stylesheet" href="commun/studio.css">
+<style>
+.apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.app{cursor:pointer;margin:0}
+.app:hover{border-color:var(--acc)}
+.app .ic{font-size:1.8rem}
+.app h3{margin:.3rem 0 .2rem}
+.app p{margin:0;color:var(--dim);font-size:.82rem}
+.app .x{float:right;color:var(--faint);background:none;border:0;cursor:pointer}
+.stepres{margin-top:12px}
+</style>
+</head>
+<body>
+<main>
+  <div id="home">
+    <div class="card">
+      <h2>Décrivez l'application que vous voulez</h2>
+      <textarea id="desc" rows="3" placeholder="Ma photo devient la star d'un film de kung-fu en 4 plans…"></textarea>
+      <div id="ex" class="chips" style="margin-top:8px"></div>
+      <div class="actions"><button class="btn primary" id="forge">⚒️ Créer l'application</button></div>
+    </div>
+    <h2>Applications prêtes à l'emploi</h2>
+    <div class="apps" id="pre"></div>
+    <h2 style="margin-top:18px" id="libh" hidden>Mes applications</h2>
+    <div class="apps" id="lib"></div>
+  </div>
+  <div id="appv" hidden>
+    <div class="card">
+      <div class="actions" style="margin-top:0"><button class="btn ghost" id="back">◂ Accueil</button><h2 id="an" style="margin:0;flex:1"></h2><button class="btn small ghost" id="save">💾 Sauver</button><button class="btn small ghost" id="share">🔗 Lien</button><button class="btn small ghost" id="json">{ } JSON</button></div>
+      <p class="hint" id="ad"></p>
+      <div id="form"></div>
+      <div class="actions"><button class="btn primary" id="go">▶ Lancer</button><button class="btn danger" id="stop" hidden>■ Arrêter</button><button class="btn" id="play" hidden>▶ Lecture enchaînée</button></div>
+      <div class="bar"><i id="bar"></i></div><div class="status"><span class="pill" id="pill">prêt</span><span id="status"></span></div>
+      <label>Modifier cette application avec l'IA</label>
+      <div class="actions" style="margin-top:0"><input id="remix" placeholder="ex. ajoute un choix d'ambiance musicale…" style="flex:1"><button class="btn" id="remixb">Remixer</button></div>
+    </div>
+    <div id="res"></div>
+  </div>
+</main>
+<dialog id="dj" class="ag-modal"><form method="dialog"><h2>Spécification JSON</h2><textarea id="js" rows="18" spellcheck="false" class="mono"></textarea><div class="actions"><span class="grow"></span><button class="btn ghost" value="c">Fermer</button><button class="btn primary" id="applyj" value="ok">Appliquer</button></div></form></dialog>
+<script src="commun/agnes.js"></script>
+<script>
+'use strict';
+const { $, esc } = AG;
+AG.shell({ icon: '⚒️', title: 'Générateur d\'Applications', subtitle: 'Décrivez une appli IA en une phrase : formulaire + étapes générés automatiquement' });
+const LIB_KEY = 'appforge_lib';
+const S = { app: null, imgs: {}, vids: [] };
+
+/* ── Moteur : chemins et gabarits {{champ}} ── */
+const get = (c, p) => p.split('.').reduce((o, k) => o == null ? o : o[k === 'i' && Array.isArray(o) ? c.i : k], c);
+const fill = (t, c) => String(t ?? '').replace(/\{\{\s*([\w.]+)\s*\}\}/g, (m, p) => { const v = get(c, p); return v == null ? '' : typeof v === 'string' ? (v.startsWith('data:') ? '(image jointe)' : v) : JSON.stringify(v); });
+const refs = (l, c) => [].concat(...(l || []).map(p => get(c, p))).filter(v => typeof v === 'string' && /^(data:|https?:)/.test(v));
+async function rss(url) {
+  for (const px of ['https://api.rss2json.com/v1/api.json?rss_url=', 'https://api.allorigins.win/raw?url=']) {
+    try {
+      const r = await fetch(px + encodeURIComponent(url)); const t = await r.text();
+      if (px.includes('rss2json')) { const j = JSON.parse(t); if (j.items && j.items.length) return j.items.slice(0, 12).map(i => ({ title: i.title, desc: String(i.description || '').replace(/<[^>]+>/g, '').slice(0, 240) })); continue; }
+      const x = new DOMParser().parseFromString(t, 'text/xml');
+      const it = [...x.querySelectorAll('item')].slice(0, 12).map(i => ({ title: i.querySelector('title')?.textContent, desc: (i.querySelector('description')?.textContent || '').replace(/<[^>]+>/g, '').slice(0, 240) }));
+      if (it.length) return it;
+    } catch (e) { AG.log('warn', 'RSS : ' + e.message); }
+  }
+  throw new Error('Flux RSS illisible');
+}
+const BLOCKS = {
+  'text.gen': (s, c) => AG.chat({ system: fill(s.system, c) || 'Tu es un assistant créatif. Réponds en français.', user: fill(s.prompt, c), max: s.max || 6000, temp: s.temp ?? 0.7 }),
+  'text.json': (s, c) => AG.chatJSON({ system: fill(s.system, c) || 'Réponds uniquement en JSON.', user: fill(s.prompt, c), max: s.max || 6000, temp: s.temp ?? 0.7 }),
+  'vision.describe': (s, c) => AG.chat({ system: 'Describe images precisely in English.', user: fill(s.prompt || 'Describe precisely the people and scene (face, hair, clothes), 80 words max.', c), images: refs(s.images, c).slice(0, 4), max: 800, temp: 0.2 }),
+  'rss.fetch': (s, c) => rss(fill(s.url, c)),
+  'image.gen': (s, c) => AG.image(fill(s.prompt, c), { refs: refs(s.refs, c).slice(0, 3), ratio: s.ratio || '9:16' }),
+  'video.gen': (s, c) => { const im = refs(s.images, c); return AG.video(fill(s.prompt, c), { first: im[0], refs: im.slice(1), seconds: s.seconds || 6, ratio: s.ratio || '9:16' }); }
+};
+const PLAN_SYS = 'Tu es réalisateur et scénariste. Réponds UNIQUEMENT en JSON : {"title":"","scenes":[{"visual":"description d\'image en anglais, précise","motion":"action et mouvement de caméra en anglais","caption":"phrase courte en français"}]} avec EXACTEMENT {{scenes}} scènes.';
+function expand(o) {
+  if (!o.film) return o;
+  const f = o.film, rf = f.refs || [], r = f.ratio || '9:16', st = [].concat(f.pre || []);
+  st.push({ id: 'plan', block: 'text.json', label: 'Scénario', system: PLAN_SYS, prompt: f.plan });
+  st.push({ id: 'img', block: 'image.gen', label: 'Images', each: 'plan.scenes', prompt: '{{item.visual}}. ' + (f.look || '') + ' No text, no watermark.', refs: rf, ratio: r });
+  if (f.video !== false) st.push({ id: 'vid', block: 'video.gen', label: 'Vidéos', each: 'plan.scenes', prompt: '{{item.motion}}. ' + (f.fx || '') + ' No text, no subtitles, no logos.', images: ['img.i'].concat(rf), seconds: f.seconds || 6, ratio: r });
+  return Object.assign({}, o, { steps: st });
+}
+const TYPES = ['text', 'textarea', 'select', 'chips', 'image', 'number', 'range', 'toggle'];
+function validate(o) {
+  if (!o || typeof o !== 'object') return 'Spécification invalide';
+  if (!o.name) return 'Nom manquant';
+  o.fields = Array.isArray(o.fields) ? o.fields : [];
+  const ids = new Set();
+  o.fields.forEach(f => { f.id = String(f.id || 'champ').replace(/\W/g, '_'); f.type = TYPES.includes(f.type) ? f.type : 'text'; ids.add(f.id); });
+  if (o.film && !ids.has('scenes')) o.fields.push({ id: 'scenes', label: 'Nombre de plans', type: 'range', min: 1, max: 8, default: 3 });
+  const a = expand(o);
+  if (!Array.isArray(a.steps) || !a.steps.length) return 'Aucune étape';
+  for (const s of a.steps) if (!BLOCKS[s.block]) return 'Bloc inconnu : ' + s.block;
+  return '';
+}
+const FORGE = 'Tu es le compilateur d\'un générateur d\'applications IA. Transforme la demande en application JSON exécutable. Réponds UNIQUEMENT par un objet JSON.\n'
+  + 'Schéma : {"name":"…","icon":"emoji","desc":"phrase FR","fields":[{"id":"snake_case","label":"FR","type":"text|textarea|select|chips|image|number|range|toggle","options":["…"],"default":"…","min":1,"max":8,"multi":false,"required":false,"placeholder":""}],"film":{…} OU "steps":[…]}\n'
+  + '"film" = pipeline scénario→images→vidéos : {"plan":"consigne au scénariste avec {{id_champ}}","look":"style visuel EN pour chaque image","fx":"style de mouvement EN","refs":["id_champ_image"],"ratio":"9:16|16:9|1:1","seconds":6,"video":true,"pre":[étapes facultatives avant le scénario]}.\n'
+  + 'Règles : avec "film", toujours un champ range id "scenes" (min 1, max 8, default 3). Si l\'utilisateur fournit une photo : champ type image (required) dont l\'id va dans refs, et look commence par "same person as the reference photo, faithful face". video:false pour des images seules.\n'
+  + 'Blocs pour "steps" : text.gen, text.json (system, prompt), vision.describe (images:[id_champ]), rss.fetch (url), image.gen (each, prompt, refs, ratio), video.gen (each, prompt, images, seconds, ratio). Chaque étape : {"id","block","label",…}. Chemins : "plan.scenes", "img.i" (élément courant), "item.visual". Prompts image/vidéo en anglais, textes en français.';
+async function forge(desc, base) {
+  const o = await AG.chatJSON({ system: FORGE, user: (base ? 'Application actuelle : ' + JSON.stringify(base) + '\nModification demandée : ' : 'Demande : ') + desc, max: 5000, temp: 0.4 });
+  const e = validate(o); if (e) throw new Error(e);
+  return o;
+}
+
+/* ── Catalogue ── */
+const SC = { id: 'scenes', label: 'Nombre de plans', type: 'range', min: 1, max: 8, default: 3 };
+const PRE = [
+  { name: 'Photo → film de style', icon: '📸', desc: 'Votre photo devient la star d\'un film : kung-fu, foot, western…', fields: [{ id: 'photo', label: 'Votre photo', type: 'image', required: true }, { id: 'style', label: 'Style', type: 'chips', options: ['Kung-fu Shaw Brothers', 'Football épique', 'Western spaghetti', 'Film de super-héros', 'Pub de parfum de luxe'], default: 'Kung-fu Shaw Brothers' }, { id: 'action', label: 'Action voulue', type: 'text', placeholder: 'ex. combat sur un toit' }, SC], film: { plan: 'Le personnage de la photo est le héros. Style : {{style}}. Action : {{action}}. Invente {{scenes}} plans spectaculaires enchaînés.', look: 'same person as the reference photo, faithful face and hair, cinematic, highly detailed', fx: 'dynamic cinematic camera', refs: ['photo'] } },
+  { name: 'Chatons arts martiaux', icon: '🐱', desc: 'Des animaux qui se battent comme dans un film des années 70.', fields: [{ id: 'hero', label: 'Héros', type: 'text', default: 'trois chatons' }, { id: 'style', label: 'Ambiance', type: 'select', options: ['Kung-fu Hong Kong 70s', 'Samouraï', 'Ninja de nuit'], default: 'Kung-fu Hong Kong 70s' }, SC], film: { plan: 'Héros : {{hero}}, naturels. Ambiance : {{style}}. Combats chorégraphiés de plus en plus intenses.', look: 'natural animals, detailed fur, expressive eyes, vintage martial arts film grain', fx: 'fast martial arts choreography, acrobatic jumps' } },
+  { name: 'Le JT sketch', icon: '📰', desc: 'L\'actualité du jour en sketchs rétrofuturistes.', fields: [{ id: 'rss', label: 'Source', type: 'select', options: ['France 24::https://www.france24.com/fr/rss', 'Le Monde::https://www.lemonde.fr/rss/une.xml', 'Google Actualités::https://news.google.com/rss?hl=fr&gl=FR&ceid=FR:fr'] }, { id: 'ton', label: 'Ton', type: 'chips', options: ['Absurde', 'Satirique', 'Poétique'], default: 'Absurde' }, SC], film: { pre: [{ id: 'news', block: 'rss.fetch', label: 'Actualités', url: '{{rss}}', hide: true }], plan: 'Actualités : {{news}}. Ton : {{ton}}. Fais un JT de {{scenes}} sketchs : présentateur qui annonce, puis reporter sur le terrain avec une phrase drôle. N\'invente aucun fait.', look: 'retro-futuristic 1960s TV news set, saturated colors', fx: 'TV broadcast camera moves' } },
+  { name: 'Film de mafieux', icon: '🎩', desc: 'Vous et vos amis dans un film noir (jusqu\'à 3 photos).', fields: [{ id: 'cast', label: 'Les visages (1 à 3 photos)', type: 'image', multi: true, required: true }, { id: 'lieu', label: 'Lieu', type: 'select', options: ['Restaurant italien', 'Casino des années 70', 'Docks la nuit'] }, { id: 'intrigue', label: 'Intrigue', type: 'text', placeholder: 'ex. une trahison au dessert' }, SC], film: { plan: 'Un film de mafia sérieux avec les personnages des photos. Lieu : {{lieu}}. Intrigue : {{intrigue}}.', look: 'faithful faces from the references, dark gold low-key lighting, 1970s crime film', fx: 'slow elegant camera, tense atmosphere', refs: ['cast'] } },
+  { name: 'Pack d\'avatars', icon: '🖼️', desc: 'Votre photo en plusieurs styles d\'images, sans vidéo.', fields: [{ id: 'photo', label: 'Votre photo', type: 'image', required: true }, { id: 'styles', label: 'Styles', type: 'chips', multi: true, options: ['Manga', 'Pixar 3D', 'Peinture à l\'huile', 'Cyberpunk', 'Aquarelle', 'Pop art'], default: 'Manga' }, SC], film: { video: false, plan: 'Un portrait par plan, chacun dans un style différent choisi parmi : {{styles}}.', look: 'same person as the reference photo, faithful face, centered portrait', refs: ['photo'], ratio: '1:1' } },
+  { name: 'Scénariste express', icon: '✍️', desc: 'Idée → scénario complet dialogué (texte seul).', fields: [{ id: 'idea', label: 'Idée', type: 'textarea', required: true }, { id: 'genre', label: 'Genre', type: 'chips', options: ['Comédie', 'Thriller', 'Science-fiction', 'Drame'], default: 'Comédie' }], steps: [{ id: 'script', block: 'text.gen', label: 'Scénario', system: 'Tu es scénariste professionnel. Écris en français, avec dialogues.', prompt: 'Idée : {{idea}}. Genre : {{genre}}. Écris un court-métrage : titre, personnages, 5 séquences dialoguées.' }] }
+];
+const EX = ['Ma photo devient un film de kung-fu', 'Mon selfie en pub de parfum de luxe', 'Mon chien en héros de western', 'Roman-photo drôle avec mes amis', 'Clip de foot où je suis la star'];
+const lib = () => AG.store.get(LIB_KEY, []);
+const enc = o => btoa(unescape(encodeURIComponent(JSON.stringify(o)))), dec = s => JSON.parse(decodeURIComponent(escape(atob(s))));
+const card = (p, src, i) => '<div class="card app" data-src="' + src + '" data-i="' + i + '">' + (src === 'lib' ? '<button class="x" data-del="' + i + '" title="Supprimer">✕</button>' : '') + '<div class="ic">' + esc(p.icon || '⚙️') + '</div><h3>' + esc(p.name) + '</h3><p>' + esc(p.desc || '') + '</p></div>';
+function home() {
+  if (AG.run.active) AG.run.stop();
+  $('appv').hidden = true; $('home').hidden = false; history.replaceState(null, '', location.pathname);
+  $('pre').innerHTML = PRE.map((p, i) => card(p, 'pre', i)).join('');
+  const L = lib(); $('libh').hidden = !L.length; $('lib').innerHTML = L.map((p, i) => card(p, 'lib', i)).join('');
+}
+document.querySelector('main').addEventListener('click', e => {
+  const d = e.target.closest('[data-del]'); if (d) { e.stopPropagation(); const L = lib(); L.splice(+d.dataset.del, 1); AG.store.set(LIB_KEY, L); return home(); }
+  const c = e.target.closest('.app'); if (c) openApp(JSON.parse(JSON.stringify((c.dataset.src === 'pre' ? PRE : lib())[+c.dataset.i])));
+});
+$('ex').innerHTML = EX.map(x => '<button type="button">' + esc(x) + '</button>').join('');
+$('ex').onclick = e => { if (e.target.tagName === 'BUTTON') $('desc').value = e.target.textContent; };
+
+/* ── Formulaire de l'application ── */
+function openApp(a) {
+  const err = validate(a); if (err) return AG.toast(err, 'err');
+  S.app = a; S.imgs = {}; S.vids = [];
+  $('home').hidden = true; $('appv').hidden = false;
+  $('an').textContent = (a.icon || '') + ' ' + a.name; $('ad').textContent = a.desc || '';
+  $('res').innerHTML = ''; $('bar').style.width = 0; $('status').textContent = ''; $('play').hidden = true;
+  $('form').innerHTML = a.fields.map(f => {
+    const id = 'f_' + f.id, opts = (f.options || []).map(x => String(x).split('::')), d = f.default ?? '';
+    let h;
+    if (f.type === 'textarea') h = '<textarea id="' + id + '" placeholder="' + esc(f.placeholder) + '">' + esc(d) + '</textarea>';
+    else if (f.type === 'select') h = '<select id="' + id + '">' + opts.map(x => '<option value="' + esc(x[1] || x[0]) + '"' + (x[0] === d ? ' selected' : '') + '>' + esc(x[0]) + '</option>').join('') + '</select>';
+    else if (f.type === 'chips') h = '<div id="' + id + '"></div>';
+    else if (f.type === 'image') h = '<div class="drop" id="' + id + '">📷 ' + (f.multi ? 'Images (3 max)' : 'Image') + '<div class="thumbs" id="t_' + f.id + '"></div></div>';
+    else if (f.type === 'toggle') h = '<label class="check"><input type="checkbox" id="' + id + '"' + (d ? ' checked' : '') + '> Oui</label>';
+    else if (f.type === 'range') h = '<div class="actions" style="margin:0"><input type="range" id="' + id + '" min="' + (f.min || 1) + '" max="' + (f.max || 8) + '" value="' + (d || f.min || 1) + '" style="flex:1"><b id="v_' + f.id + '">' + (d || f.min || 1) + '</b></div>';
+    else h = '<input id="' + id + '" type="' + (f.type === 'number' ? 'number' : 'text') + '" value="' + esc(d) + '" placeholder="' + esc(f.placeholder) + '">';
+    return '<label>' + esc(f.label) + (f.required ? ' *' : '') + '</label>' + h;
+  }).join('');
+  a.fields.forEach(f => {
+    const el = $('f_' + f.id);
+    if (f.type === 'chips') f.read = AG.chips(el, (f.options || []).map(x => { const p = String(x).split('::'); return [p[0], p[1] || p[0]]; }), { multi: !!f.multi, value: [].concat(f.default || []) });
+    if (f.type === 'range') el.oninput = () => { $('v_' + f.id).textContent = el.value; };
+    if (f.type === 'image') AG.dropzone(el, list => { S.imgs[f.id] = (f.multi ? (S.imgs[f.id] || []).concat(list) : list).slice(0, f.multi ? 3 : 1); $('t_' + f.id).innerHTML = S.imgs[f.id].map(u => '<figure><img src="' + u + '"></figure>').join(''); }, !!f.multi);
+  });
+}
+function values() {
+  const v = {};
+  for (const f of S.app.fields) {
+    const el = $('f_' + f.id);
+    v[f.id] = f.type === 'image' ? (f.multi ? S.imgs[f.id] || [] : (S.imgs[f.id] || [])[0]) : f.type === 'chips' ? [].concat(f.read()).join(', ') : f.type === 'toggle' ? el.checked : f.type === 'range' || f.type === 'number' ? +el.value : el.value;
+  }
+  return v;
+}
+function cell(s, v, it) {
+  const cap = it && it.caption ? '<div class="body"><p>' + esc(it.caption) + '</p></div>' : '';
+  if (s.block === 'image.gen') return '<div class="tile"><div class="media ' + (s.ratio === '1:1' ? 'sq' : s.ratio === '16:9' ? 'land' : '') + '"><img src="' + esc(v) + '"></div>' + cap + '</div>';
+  if (s.block === 'video.gen') return '<div class="tile"><div class="media ' + (s.ratio === '16:9' ? 'land' : s.ratio === '1:1' ? 'sq' : '') + '"><video src="' + esc(v) + '" controls playsinline></video></div>' + cap + '</div>';
+  return '<div class="out" style="grid-column:1/-1">' + esc(typeof v === 'string' ? v : JSON.stringify(v, null, 1)) + '</div>';
+}
+const ph = (msg, err) => '<div class="tile ' + (err ? 'err' : 'run') + '"><div class="media">' + (err ? '<span class="state">' + esc(msg) + '</span>' : '<div class="spin"></div>') + '</div></div>';
+async function runApp() {
+  const a = expand(S.app), c = values();
+  for (const f of S.app.fields) if (f.required && (!c[f.id] || !c[f.id].length)) throw new Error('Champ requis : ' + f.label);
+  $('res').innerHTML = ''; S.vids = []; $('play').hidden = true;
+  for (let si = 0; si < a.steps.length; si++) {
+    const s = a.steps[si], blk = BLOCKS[s.block], key = s.out || s.id, arr = s.each ? get(c, s.each) : null;
+    if (s.each && !Array.isArray(arr)) throw new Error('Étape « ' + (s.label || s.id) + ' » : liste introuvable (' + s.each + ')');
+    const n = arr ? arr.length : 1, show = !(s.hide || /rss|vision/.test(s.block));
+    $('status').textContent = (s.label || s.id) + '…'; $('bar').style.width = Math.round(si / a.steps.length * 100) + '%';
+    let box = null;
+    if (show) { $('res').insertAdjacentHTML('beforeend', '<section class="card stepres"><h3>' + (si + 1) + '/' + a.steps.length + ' — ' + esc(s.label || s.id) + '</h3><div class="grid"></div></section>'); box = $('res').lastElementChild.querySelector('.grid'); box.innerHTML = Array.from({ length: n }, () => ph()).join(''); }
+    const put = (i, v, err) => { if (box && box.children[i]) box.children[i].outerHTML = err ? ph(err, true) : cell(s, v, arr && arr[i]); };
+    if (!arr) { const r = await blk(s, Object.assign({}, c)); c[key] = r; put(0, r); continue; }
+    if (s.block === 'video.gen') AG.log('info', n + ' clips × ' + (s.seconds || 6) + ' s');
+    const res = await AG.pool(arr, s.block === 'image.gen' ? AG.imgLimit() : n, async (item, i) => {
+      try { const r = await blk(s, Object.assign({}, c, { i, i1: i + 1, n, item })); put(i, r); return r; }
+      catch (e) { if (AG.isStop(e) || e.fatal) throw e; put(i, null, e.message.slice(0, 80)); AG.log('err', (s.label || s.id) + ' ' + (i + 1) + ' : ' + e.message); throw e; }
+    });
+    c[key] = res.map(r => r.ok ? r.value : null);
+    if (s.block === 'video.gen') S.vids = c[key].filter(Boolean);
+  }
+  $('bar').style.width = '100%'; $('status').textContent = 'Terminé';
+  $('play').hidden = S.vids.length < 2;
+}
+function busy(on) { $('go').disabled = on; $('remixb').disabled = on; $('stop').hidden = !on; $('pill').textContent = on ? 'en cours' : 'prêt'; $('pill').className = 'pill ' + (on ? 'run' : ''); }
+
+$('forge').onclick = () => {
+  const d = $('desc').value.trim(); if (d.length < 8) return AG.toast('Décrivez votre application en une phrase', 'err');
+  AG.job(async () => { $('forge').textContent = 'Création…'; try { openApp(await forge(d)); } finally { $('forge').textContent = '⚒️ Créer l\'application'; } }, on => { $('forge').disabled = on; });
+};
+$('remixb').onclick = () => { const d = $('remix').value.trim(); if (!d) return; AG.job(async () => { openApp(await forge(d, S.app)); $('remix').value = ''; AG.toast('Application modifiée'); }, busy); };
+$('go').onclick = () => AG.job(runApp, busy);
+$('stop').onclick = () => AG.run.stop();
+$('back').onclick = home;
+$('play').onclick = () => AG.playFilm(S.vids.map(u => ({ url: u })));
+$('save').onclick = () => { const L = lib(); const clean = JSON.parse(JSON.stringify(S.app)); L.push(clean); AG.store.set(LIB_KEY, L); AG.toast('Application sauvegardée'); };
+$('share').onclick = () => { const u = location.href.split('#')[0] + '#a=' + enc(S.app); history.replaceState(null, '', '#a=' + enc(S.app)); AG.copy(u); };
+$('json').onclick = () => { $('js').value = JSON.stringify(S.app, null, 1); $('dj').showModal(); };
+$('applyj').onclick = e => { try { const o = JSON.parse($('js').value); openApp(o); } catch (err) { e.preventDefault(); AG.toast('JSON invalide : ' + err.message, 'err'); } };
+home();
+if (location.hash.startsWith('#a=')) { try { openApp(dec(location.hash.slice(3))); } catch (e) { AG.toast('Lien invalide', 'err'); } }
+</script>
+</body>
+</html>

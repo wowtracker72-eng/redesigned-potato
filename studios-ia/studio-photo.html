@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Studio Photo</title>
+<link rel="stylesheet" href="commun/studio.css">
+<style>
+.sess{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.sess select{flex:1;min-width:140px}
+.blocks{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.blocks .btn{white-space:normal;font-size:.8rem}
+.selbar{position:sticky;top:58px;z-index:5}
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <div class="sess"><b>Session</b><select id="sessions"></select><button class="btn small" id="s-new">+ Nouvelle</button><button class="btn small ghost" id="s-ren">Renommer</button><button class="btn small ghost" id="s-del">Supprimer</button><span class="grow"></span><button class="btn small ghost" id="s-exp">📥 Exporter</button><button class="btn small ghost" id="s-imp">📤 Importer</button></div>
+  </div>
+  <div class="cols">
+    <section>
+      <div class="card">
+        <h2>1 · Photos de référence</h2>
+        <div class="drop" id="drop">📷 1 à 6 photos<br><small>cliquer, glisser ou coller</small><div class="thumbs" id="thumbs"></div></div>
+        <div class="actions"><button class="btn small" id="an">🔍 Analyser</button></div>
+        <div class="out" id="analysis" hidden></div>
+      </div>
+      <div class="card">
+        <h2>2 · Générer un bloc</h2>
+        <div class="row2"><label>Taille du bloc<select id="bs"><option>10</option><option selected>20</option><option>40</option><option value="50">50</option></select></label><label>Format<select id="ratio"><option value="9:16" selected>9:16</option><option value="1:1">1:1</option><option value="16:9">16:9</option></select></label></div>
+        <div class="blocks" style="margin-top:8px">
+          <button class="btn" data-b="styles">🎨 Styles artistiques</button>
+          <button class="btn" data-b="faithful">🪞 Reconstructions fidèles</button>
+          <button class="btn" data-b="chars">🧑 Nouveaux personnages<br><small>(texte seul)</small></button>
+          <button class="btn" data-b="decors">🏞 Nouveaux décors<br><small>(texte seul)</small></button>
+          <button class="btn" data-b="story">📖 Histoire en images</button>
+          <button class="btn" data-b="favs">⭐ Mes styles favoris</button>
+        </div>
+        <label>Consigne supplémentaire (facultatif)</label>
+        <input id="extra" placeholder="ex. ambiance de Noël, tenue élégante…">
+        <div class="actions"><button class="btn danger" id="stop" hidden>■ Arrêter</button></div>
+        <p class="hint" id="favinfo"></p>
+      </div>
+      <div class="card">
+        <h2>3 · Film</h2>
+        <p class="hint">Cochez ☐ des images dans la galerie, puis créez un film : l'IA écrit l'histoire et anime chaque image.</p>
+        <div class="row2"><label>Durée / plan<select id="secs"><option value="5" selected>5 s</option><option value="6">6 s</option><option value="10">10 s</option></select></label><label>Idée du film (facultatif)<input id="filmidea" placeholder="ex. un voyage initiatique"></label></div>
+        <div class="actions"><button class="btn primary" id="film" disabled>🎬 Créer le film (<span id="selc">0</span>)</button><button class="btn" id="play" disabled>▶ Diffuser</button></div>
+      </div>
+    </section>
+    <section>
+      <div class="card">
+        <div class="bar"><i id="bar"></i></div>
+        <div class="status"><span class="pill" id="pill">prêt</span><span id="status">Ajoutez une photo puis générez un bloc.</span></div>
+        <div class="tabs" id="filter"></div>
+        <div class="actions" style="margin-top:0"><button class="btn small ghost" id="selall">Tout cocher</button><button class="btn small ghost" id="selnone">Tout décocher</button><button class="btn small ghost" id="dl">⬇ Télécharger la vue</button><button class="btn small ghost" id="retry">↻ Reprendre les échecs</button><button class="btn small ghost" id="clear">🗑 Vider la galerie</button></div>
+      </div>
+      <div class="grid" id="board"></div>
+    </section>
+  </div>
+</main>
+<script src="commun/agnes.js"></script>
+<script>
+'use strict';
+const { $, esc } = AG;
+AG.shell({ icon: '📸', title: 'Studio Photo', subtitle: 'Photo → blocs de styles, personnages, décors → film. Sessions sauvegardées.' });
+const STYLES = ['Pixar-like 3D animation', 'Studio Ghibli watercolor anime', 'Japanese shonen manga ink', '1980s anime cel shading', 'cinematic 35mm film still', 'film noir black and white', 'Wes Anderson pastel symmetry', 'Wong Kar-wai neon melancholy', 'cyberpunk neon night', 'oil painting, Rembrandt lighting', 'impressionist Monet brushstrokes', 'Van Gogh swirling impasto', 'Klimt golden ornamental', 'ukiyo-e woodblock print', 'art nouveau Mucha poster', 'pop art Warhol', 'comic book ligne claire Herge', 'Moebius sci-fi comic', 'watercolor children book', 'pencil charcoal sketch', 'claymation stop-motion', 'Lego brick figure', 'low-poly 3D', 'isometric miniature diorama', 'vaporwave aesthetic', 'steampunk Victorian', 'dark fantasy concept art', 'renaissance fresco', 'Byzantine mosaic', 'stained glass window', 'paper cut-out collage', 'origami folded paper', 'knitted wool toy', 'vintage 1970s Kodachrome photo', 'polaroid snapshot', 'fashion editorial photography', 'National Geographic documentary photo', 'golden hour portrait photography', 'tilt-shift miniature photo', 'infrared false-color photo', 'synthwave retro-futurism', 'Art Deco 1920s poster', 'Soviet constructivist poster', 'graffiti street art mural', 'tattoo flash art', 'Chinese ink wash painting', 'Persian miniature painting', 'Aboriginal dot painting', 'Mexican muralism', 'glitch art'];
+const KIND = { styles: '🎨 Style', faithful: '🪞 Fidèle', chars: '🧑 Personnage', decors: '🏞 Décor', story: '📖 Histoire', favs: '⭐ Favori', var: '🔄 Variante', film: '🎬 Film' };
+const FAVS_KEY = 'studio_photo_favs';
+let S = null, sessions = [], filter = '';
+const favs = () => AG.store.get(FAVS_KEY, []);
+
+/* ── Sessions (IndexedDB) ── */
+const blank = name => ({ id: AG.uid(), name: name || 'Session ' + new Date().toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }), refs: [], an: null, items: [], film: [], styleCursor: 0, updated: Date.now() });
+const persist = (() => { let t; return () => { clearTimeout(t); t = setTimeout(() => { S.updated = Date.now(); AG.db.set('sp_' + S.id, JSON.parse(JSON.stringify(S, (k, v) => k === 'st' && v === 'run' ? 'wait' : v))).catch(e => AG.log('warn', 'Sauvegarde : ' + e.message)); }, 400); }; })();
+async function loadSessions() {
+  const ids = await AG.db.keys('sp_');
+  sessions = (await Promise.all(ids.map(k => AG.db.get(k)))).filter(Boolean).sort((a, b) => b.updated - a.updated);
+  if (!sessions.length) { sessions = [blank()]; }
+  const last = AG.store.get('sp_current', '');
+  open(sessions.find(s => s.id === last) || sessions[0]);
+}
+function open(s) {
+  S = s; AG.store.set('sp_current', s.id);
+  $('sessions').innerHTML = sessions.map(x => '<option value="' + x.id + '"' + (x.id === s.id ? ' selected' : '') + '>' + esc(x.name) + ' (' + x.items.length + ')</option>').join('');
+  showRefs(); draw();
+}
+$('sessions').onchange = () => { if (AG.run.active) return AG.toast('Attendez la fin de la génération', 'err'); open(sessions.find(x => x.id === $('sessions').value)); };
+$('s-new').onclick = () => { if (AG.run.active) return; const s = blank(); sessions.unshift(s); open(s); persist(); };
+$('s-ren').onclick = () => { const n = prompt('Nom de la session', S.name); if (n) { S.name = n.trim().slice(0, 60); open(S); persist(); } };
+$('s-del').onclick = async () => { if (AG.run.active || !confirm('Supprimer la session « ' + S.name + ' » ?')) return; await AG.db.del('sp_' + S.id); sessions = sessions.filter(x => x !== S); if (!sessions.length) sessions = [blank()]; open(sessions[0]); };
+$('s-exp').onclick = () => { const u = URL.createObjectURL(new Blob([JSON.stringify({ session: S, favs: favs() })], { type: 'application/json' })); AG.download(u, 'studio-photo-' + S.name.replace(/\W+/g, '-') + '.json'); };
+$('s-imp').onclick = () => { const i = Object.assign(document.createElement('input'), { type: 'file', accept: '.json' }); i.onchange = async () => { try { const j = JSON.parse(await i.files[0].text()); const s = Object.assign(blank(), j.session || j, { id: AG.uid() }); sessions.unshift(s); if (Array.isArray(j.favs)) AG.store.set(FAVS_KEY, [...new Map(favs().concat(j.favs).map(f => [f.prompt, f])).values()]); open(s); persist(); AG.toast('Session importée'); } catch (e) { AG.toast('Fichier invalide', 'err'); } }; i.click(); };
+
+/* ── Références ── */
+function showRefs() {
+  $('thumbs').innerHTML = S.refs.map((u, i) => '<figure><img src="' + u + '"><button data-x="' + i + '">✕</button></figure>').join('');
+  $('analysis').hidden = !S.an; $('analysis').textContent = S.an ? 'Sujet : ' + S.an.subject + '\nStyle : ' + S.an.style + '\nDécor : ' + S.an.setting : '';
+  $('favinfo').textContent = favs().length + ' style(s) favori(s) enregistré(s) — partagés entre toutes les sessions.';
+}
+AG.dropzone($('drop'), list => { S.refs = S.refs.concat(list).slice(0, 6); S.an = null; showRefs(); persist(); }, true);
+$('thumbs').onclick = e => { const x = e.target.closest('[data-x]'); if (x) { e.stopPropagation(); S.refs.splice(+x.dataset.x, 1); S.an = null; showRefs(); persist(); } };
+async function analyze() {
+  const j = await AG.chatJSON({ system: 'Directeur artistique et directeur de casting. JSON strict, valeurs en ANGLAIS.', user: 'Analyse ' + (S.refs.length > 1 ? 'ces ' + S.refs.length + ' images ensemble (dis ce qui vient de chacune)' : 'cette image') + '. JSON : {"subject":"precise physical description of the main person(s): face, hair, age, skin, outfit, colors","style":"medium, lighting, palette, texture","setting":"place and atmosphere","prompt":"one English prompt (60-90 words) recreating the image faithfully"}', images: S.refs, max: 1500, temp: 0.2 });
+  S.an = { subject: j.subject || 'the person in the reference', style: j.style || '', setting: j.setting || '', prompt: j.prompt || '' };
+  showRefs(); persist();
+}
+const ensureAn = async () => { if (!S.an) { $('status').textContent = 'Analyse des photos…'; await analyze(); } };
+$('an').onclick = () => { if (!S.refs.length) return AG.toast('Ajoutez une photo', 'err'); AG.job(analyze, busy); };
+
+/* ── Galerie ── */
+function renderFilter() {
+  const counts = {}; S.items.forEach(x => { counts[x.kind] = (counts[x.kind] || 0) + 1; });
+  $('filter').innerHTML = '<button data-v=""' + (!filter ? ' class="on"' : '') + '>Tout (' + S.items.length + ')</button>' + Object.keys(counts).map(k => '<button data-v="' + k + '"' + (filter === k ? ' class="on"' : '') + '>' + KIND[k] + ' (' + counts[k] + ')</button>').join('');
+}
+$('filter').onclick = e => { const b = e.target.closest('button'); if (b) { filter = b.dataset.v; draw(); } };
+const view = () => S.items.filter(x => !filter || x.kind === filter);
+const draw = AG.throttle(() => {
+  renderFilter();
+  const fv = new Set(favs().map(f => f.prompt));
+  const list = view();
+  $('board').innerHTML = list.length ? list.map(x => AG.tile({ id: x.id, label: KIND[x.kind].split(' ')[0] + ' ' + x.label, img: x.img, video: x.video, st: x.st, msg: x.msg, sel: x.sel, fav: fv.has(x.style) }, { ratio: x.ratio, retry: true, tools: [{ a: 'sel', label: x.sel ? '☑' : '☐', title: 'Sélectionner pour le film', when: it => it.img }, { a: 'fav', label: fv.has(x.style) ? '★' : '☆', title: 'Style favori', when: it => it.img && x.style }, { a: 'var', label: '🔄×5', title: '5 variantes', when: it => it.img }, { a: 'redo', label: '↻', when: it => it.st !== 'run' }, { a: 'dl', label: '⬇', when: it => it.img }, { a: 'rm', label: '✕', when: it => it.st !== 'run' }] })).join('') : '<div class="empty">Aucune image dans cette session.</div>';
+  const n = S.items.length || 1, ok = S.items.filter(x => x.img).length, sel = S.items.filter(x => x.sel && x.img).length;
+  $('bar').style.width = Math.round(ok / n * 100) + '%';
+  $('selc').textContent = sel; $('film').disabled = !sel || AG.run.active;
+  $('play').disabled = !(S.film || []).some(f => f.video);
+});
+function busy(on) {
+  document.querySelectorAll('[data-b]').forEach(b => { b.disabled = on; });
+  ['an', 'retry', 'clear', 's-new', 's-del'].forEach(id => { $(id).disabled = on; });
+  $('stop').hidden = !on; $('pill').textContent = on ? 'en cours' : 'prêt'; $('pill').className = 'pill ' + (on ? 'run' : '');
+  if (!on) { persist(); open(S); }
+}
+
+/* ── Blocs ── */
+async function gen(x) {
+  try {
+    x.st = 'run'; x.msg = ''; x.img = null; draw();
+    x.img = await AG.image(x.prompt + ' No text, no watermark.', { refs: x.useRef ? (x.ref ? [x.ref] : S.refs) : [], ratio: x.ratio });
+    x.st = 'ok';
+  } catch (e) {
+    if (AG.isStop(e)) { x.st = 'wait'; throw e; }
+    if (e.fatal) throw e;
+    x.st = 'err'; x.msg = e.message.slice(0, 60); AG.log('err', x.label + ' : ' + e.message);
+  } finally { draw(); persist(); }
+}
+const item = (kind, label, prompt, o) => Object.assign({ id: AG.uid(), kind, label, prompt, useRef: true, ratio: $('ratio').value, st: 'wait' }, o || {});
+async function buildBlock(kind, n) {
+  const a = S.an, extra = $('extra').value.trim(), ex = extra ? ' ' + extra + '.' : '';
+  if (kind === 'styles') return Array.from({ length: n }, () => { const st = STYLES[S.styleCursor++ % STYLES.length]; return item(kind, st, 'Portrait of ' + a.subject + ', rendered as ' + st + '. Keep the same identity and recognizable face.' + ex, { style: st }); });
+  if (kind === 'faithful') return Array.from({ length: n }, (_, i) => item(kind, '#' + (i + 1), a.prompt + ' Faithful reconstruction, same person, same outfit, ' + ['same framing', 'slightly different pose', 'different camera angle', 'different expression', 'closer framing'][i % 5] + '.' + ex));
+  if (kind === 'favs') { const f = favs(); if (!f.length) throw new Error('Aucun style favori. Cliquez ☆ sur une image pour enregistrer son style.'); return f.slice(0, n).map(s => item(kind, s.label, 'Portrait of ' + a.subject + ', rendered as ' + s.prompt + '. Keep the same identity.' + ex, { style: s.prompt })); }
+  // Personnages, décors, histoire : l'IA invente les prompts
+  const ask = kind === 'chars' ? 'Invente ' + n + ' NOUVEAUX personnages (pas la personne de la photo) qui vivraient dans le même univers visuel. Chaque prompt décrit un personnage différent, en pied, dans le style : ' + a.style
+    : kind === 'decors' ? 'Invente ' + n + ' DÉCORS sans personnage, variés, dans le même univers et le même style : ' + a.style + '. Univers d\'origine : ' + a.setting
+    : 'Raconte une histoire courte en ' + n + ' images avec ce personnage : ' + a.subject + '. Chaque prompt = une étape de l\'histoire (action, lieu, émotion), même style : ' + a.style;
+  const j = await AG.chatJSON({ system: 'Tu écris des prompts d\'images créatifs. JSON strict.', user: ask + '.' + ex + '\nJSON : {"items":[{"label":"titre court FR","prompt":"English prompt, 40-70 words"}]} — exactement ' + n + ' éléments.', max: 7000, temp: 0.95 });
+  const list = (Array.isArray(j.items) ? j.items : []).slice(0, n);
+  if (!list.length) throw new Error('L\'IA n\'a proposé aucune idée. Réessayez.');
+  return list.map(x => item(kind, x.label || '', x.prompt || '', { useRef: kind === 'story' }));
+}
+document.querySelectorAll('[data-b]').forEach(b => b.onclick = () => {
+  if (!S.refs.length) return AG.toast('Ajoutez au moins une photo', 'err');
+  const kind = b.dataset.b, n = +$('bs').value;
+  AG.job(async () => {
+    await ensureAn();
+    $('status').textContent = 'Préparation du bloc ' + KIND[kind] + '…';
+    const list = await buildBlock(kind, n);
+    S.items = list.concat(S.items); filter = ''; draw(); persist();
+    $('status').textContent = list.length + ' images en cours…';
+    await AG.pool(list, AG.imgLimit(), gen);
+    $('status').textContent = list.filter(x => x.img).length + ' / ' + list.length + ' images prêtes';
+  }, busy);
+});
+
+/* ── Film à partir de la sélection ── */
+async function makeFilm() {
+  const sel = S.items.filter(x => x.sel && x.img);
+  const secs = +$('secs').value;
+  $('status').textContent = 'Écriture du film…';
+  const j = await AG.chatJSON({ system: 'Tu es un réalisateur. Tu écris un court-métrage à partir d\'images données dans l\'ordre. JSON strict.', user: 'Voici ' + sel.length + ' images dans l\'ordre du film. ' + ($('filmidea').value.trim() ? 'Idée : ' + $('filmidea').value.trim() + '. ' : '') + 'Pour chaque image : "narration" (voix off française, ' + (secs >= 10 ? '15 à 22' : '8 à 12') + ' mots, qui forme une histoire continue) et "motion" (prompt ANGLAIS : action + caméra, 15-30 mots).\nJSON : {"title":"","shots":[{"narration":"","motion":""}]}', images: sel.slice(0, 8).map(x => x.img), max: 4000, temp: 0.8 });
+  const shots = Array.isArray(j.shots) ? j.shots : [];
+  S.film = sel.map((x, i) => ({ id: AG.uid(), img: x.img, ratio: x.ratio, narration: (shots[i] || {}).narration || '', motion: (shots[i] || {}).motion || 'slow cinematic camera move', st: 'wait' }));
+  const vids = S.film.map(f => item('film', 'Plan ' + (S.film.indexOf(f) + 1), f.motion, { img: f.img, ratio: f.ratio, st: 'run', filmRef: f.id }));
+  S.items = vids.concat(S.items); filter = 'film'; draw();
+  $('status').textContent = 'Animation de ' + sel.length + ' plans…';
+  await AG.pool(S.film, S.film.length, async (f, i) => {
+    const t = vids[i];
+    try { f.video = await AG.video(f.motion + '. Keep the subject and style identical to the first frame. No text, no music.', { first: f.img, seconds: secs, ratio: f.ratio, onProgress: m => { t.msg = m; draw(); } }); t.video = f.video; t.st = 'ok'; }
+    catch (e) { if (AG.isStop(e) || e.fatal) throw e; t.st = 'err'; t.msg = e.message.slice(0, 60); }
+    finally { draw(); persist(); }
+  });
+  $('status').textContent = 'Film « ' + (j.title || 'sans titre') + ' » : ' + S.film.filter(f => f.video).length + ' / ' + S.film.length + ' plans';
+}
+$('film').onclick = () => AG.job(makeFilm, busy);
+$('play').onclick = () => AG.playFilm((S.film || []).map(f => ({ url: f.video, text: f.narration })));
+
+/* ── Actions sur les vignettes ── */
+$('board').onclick = e => {
+  const b = e.target.closest('[data-a]'); if (!b) return;
+  const x = S.items.find(y => y.id === b.dataset.id); if (!x) return;
+  const a = b.dataset.a;
+  if (a === 'sel') { x.sel = !x.sel; draw(); return persist(); }
+  if (a === 'rm') { S.items.splice(S.items.indexOf(x), 1); draw(); return persist(); }
+  if (a === 'dl') return AG.download(x.video || x.img, 'studio-' + x.kind + '-' + x.id + (x.video ? '.mp4' : '.jpg'));
+  if (a === 'fav') { let f = favs(); f = f.some(s => s.prompt === x.style) ? f.filter(s => s.prompt !== x.style) : f.concat({ label: x.label, prompt: x.style }); AG.store.set(FAVS_KEY, f); showRefs(); return draw(); }
+  if (a === 'redo') { if (x.kind === 'film') return AG.toast('Recréez le film depuis la sélection', 'err'); return AG.job(() => gen(x), busy); }
+  if (a === 'var') {
+    const vs = ['different camera angle', 'closer framing', 'wider shot', 'different lighting', 'different pose and expression'].map(v => item('var', v, 'Variation of the reference image: ' + v + '. Same subject, same identity, same style.', { ref: x.img, style: x.style }));
+    S.items.splice(S.items.indexOf(x) + 1, 0, ...vs); draw();
+    AG.job(() => AG.pool(vs, AG.imgLimit(), gen), busy);
+  }
+};
+$('selall').onclick = () => { view().forEach(x => { if (x.img) x.sel = true; }); draw(); persist(); };
+$('selnone').onclick = () => { S.items.forEach(x => { x.sel = false; }); draw(); persist(); };
+$('dl').onclick = () => AG.downloadAll(view().filter(x => x.img || x.video).map((x, i) => ({ url: x.video || x.img, name: 'studio-' + String(i + 1).padStart(3, '0') + (x.video ? '.mp4' : '.jpg') })));
+$('retry').onclick = () => { const todo = S.items.filter(x => (x.st === 'err' || x.st === 'wait') && x.kind !== 'film'); if (!todo.length) return AG.toast('Aucun échec à reprendre'); AG.job(() => AG.pool(todo, AG.imgLimit(), gen), busy); };
+$('clear').onclick = () => { if (confirm('Vider toutes les images de cette session ?')) { S.items = []; S.film = []; draw(); persist(); } };
+loadSessions();
+</script>
+</body>
+</html>

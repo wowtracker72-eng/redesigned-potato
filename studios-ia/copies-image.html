@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Copies d'Image</title>
+<link rel="stylesheet" href="commun/studio.css">
+</head>
+<body>
+<main>
+  <div class="cols">
+    <section>
+      <div class="card">
+        <h2>1 · Image de référence</h2>
+        <div class="drop" id="drop">🖼️ Image à reproduire<div class="thumbs" id="thumbs"></div></div>
+        <div class="out" id="analysis" hidden></div>
+      </div>
+      <div class="card">
+        <h2>2 · Lots</h2>
+        <label class="check"><input type="checkbox" id="l-fid" checked> 🟢 Fidélité — copie la plus exacte possible</label>
+        <label class="check"><input type="checkbox" id="l-doc" checked> 🔵 Documentation — prompt structuré Sujet + Scène + Style + Lumière + Cadrage + Qualité</label>
+        <label class="check"><input type="checkbox" id="l-usr" checked> 🟣 Styles populaires — la même image dans des styles variés</label>
+        <div class="row2">
+          <label>Copies par lot<input type="number" id="n" min="1" max="20" value="6"></label>
+          <label>Format<select id="ratio"><option value="1:1">1:1</option><option value="9:16" selected>9:16</option><option value="16:9">16:9</option><option value="4:3">4:3</option></select></label>
+        </div>
+        <div class="actions"><button class="btn primary big" id="go">🚀 Lancer les lots</button></div>
+        <div class="actions"><button class="btn danger" id="stop" hidden>■ Arrêter</button><button class="btn ghost" id="dl" disabled>⬇ Tout télécharger</button></div>
+      </div>
+    </section>
+    <section>
+      <div class="card">
+        <div class="bar"><i id="bar"></i></div>
+        <div class="status"><span class="pill" id="pill">prêt</span><span id="status">Ajoutez une image de référence.</span></div>
+        <div class="tabs" id="filter"><button data-v="" class="on">Toutes</button><button data-v="fid">🟢 Fidélité</button><button data-v="doc">🔵 Documentation</button><button data-v="usr">🟣 Styles</button><button data-v="var">🔄 Variations</button></div>
+      </div>
+      <div class="grid" id="board"><div class="empty">Les copies apparaîtront ici.</div></div>
+    </section>
+  </div>
+</main>
+<script src="commun/agnes.js"></script>
+<script>
+'use strict';
+const { $ } = AG;
+AG.shell({ icon: '🧬', title: 'Copies d\'Image', subtitle: 'Une image → des lots de copies fidèles, structurées ou restylées' });
+const USER_STYLES = ['cinematic film still, 35mm, shallow depth of field', 'Pixar-like 3D animation render', 'Japanese anime illustration', 'oil painting with visible brushstrokes', 'watercolor illustration', 'black and white fine art photography', 'cyberpunk neon night', 'vintage 1970s film photo', 'Studio Ghibli painted style', 'comic book ink and flat colors', 'claymation figurine style', 'golden hour editorial photography', 'minimalist flat vector art', 'renaissance painting', 'low-poly 3D art', 'pencil sketch', 'pop art Warhol style', 'dark fantasy concept art', 'Lego brick style', 'polaroid snapshot'];
+const VARIATIONS = ['different camera angle', 'closer framing', 'wider shot showing more of the setting', 'different time of day lighting', 'different expression and pose'];
+const LOT = { fid: '🟢', doc: '🔵', usr: '🟣', var: '🔄' };
+const S = { ref: null, an: null, items: [], filter: '' };
+
+AG.dropzone($('drop'), ([u]) => { S.ref = u; S.an = null; $('analysis').hidden = true; $('thumbs').innerHTML = '<figure><img src="' + u + '"></figure>'; $('status').textContent = 'Image prête.'; });
+$('filter').onclick = e => { const b = e.target.closest('button'); if (!b) return; S.filter = b.dataset.v; $('filter').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); draw(); };
+
+const draw = AG.throttle(() => {
+  const list = S.items.filter(x => !S.filter || x.lot === S.filter);
+  $('board').innerHTML = list.length ? list.map(x => AG.tile({ id: x.id, label: LOT[x.lot] + ' ' + x.label, img: x.img, st: x.st, msg: x.msg }, { ratio: S.ratio, retry: true, tools: [{ a: 'var', label: '🔄 ×5', title: '5 variations', when: it => it.img }, { a: 'redo', label: '↻', when: it => it.st !== 'run' }, { a: 'dl', label: '⬇', when: it => it.img }, { a: 'cp', label: '📋', title: 'Copier le prompt' }] })).join('') : '<div class="empty">Rien ici pour le moment.</div>';
+  const n = S.items.length || 1, ok = S.items.filter(x => x.img).length;
+  $('bar').style.width = Math.round(ok / n * 100) + '%'; $('dl').disabled = !ok;
+  $('status').textContent = S.items.length ? ok + ' / ' + S.items.length + ' images' : $('status').textContent;
+});
+function busy(on) { $('go').disabled = on; $('stop').hidden = !on; $('pill').textContent = on ? 'en cours' : 'prêt'; $('pill').className = 'pill ' + (on ? 'run' : ''); }
+
+async function analyze() {
+  const j = await AG.chatJSON({ system: 'Tu es un expert en prompts pour génération d\'images. JSON strict, valeurs en ANGLAIS.', user: 'Décris cette image pour pouvoir la recréer. JSON : {"subject":"","scene":"","style":"","lighting":"","composition":"","quality":"","full_prompt":"one complete English prompt (70-110 words) recreating this image as exactly as possible"}', images: [S.ref], max: 1500, temp: 0.2 });
+  S.an = j;
+  $('analysis').hidden = false; $('analysis').textContent = Object.entries(j).map(([k, v]) => k + ' : ' + v).join('\n');
+}
+function buildLots(n) {
+  const a = S.an, out = [];
+  if ($('l-fid').checked) for (let i = 0; i < n; i++) out.push({ lot: 'fid', label: 'Fidélité ' + (i + 1), prompt: 'Exact faithful copy of the reference image. Keep composition, pose, identity, colors, lighting and every detail unchanged. ' + a.full_prompt });
+  if ($('l-doc').checked) for (let i = 0; i < n; i++) out.push({ lot: 'doc', label: 'Doc ' + (i + 1), prompt: [a.subject, a.scene, a.style, a.lighting, a.composition, a.quality || 'highly detailed, sharp focus, high quality'].filter(Boolean).join('. ') });
+  if ($('l-usr').checked) for (let i = 0; i < n; i++) { const st = USER_STYLES[i % USER_STYLES.length]; out.push({ lot: 'usr', label: st.split(',')[0], prompt: a.subject + '. ' + a.scene + '. Rendered as ' + st + '. Same subject and composition as the reference.' }); }
+  return out.map(x => Object.assign(x, { id: AG.uid(), st: 'wait' }));
+}
+async function gen(x) {
+  try { x.st = 'run'; x.msg = ''; x.img = null; draw(); x.img = await AG.image(x.prompt + ' No text, no watermark.', { refs: [x.ref || S.ref], ratio: S.ratio }); x.st = 'ok'; }
+  catch (e) { if (AG.isStop(e)) { x.st = 'wait'; throw e; } if (e.fatal) throw e; x.st = 'err'; x.msg = e.message.slice(0, 60); AG.log('err', x.label + ' : ' + e.message); }
+  finally { draw(); }
+}
+$('go').onclick = () => {
+  if (!S.ref) return AG.toast('Ajoutez une image de référence', 'err');
+  if (!['l-fid', 'l-doc', 'l-usr'].some(id => $(id).checked)) return AG.toast('Cochez au moins un lot', 'err');
+  S.ratio = $('ratio').value;
+  AG.job(async () => {
+    $('status').textContent = 'Analyse de l\'image…';
+    if (!S.an) await analyze();
+    const lots = buildLots(Math.max(1, Math.min(20, +$('n').value || 6)));
+    S.items = lots.concat(S.items.filter(x => x.lot === 'var'));
+    draw();
+    await AG.pool(lots, AG.imgLimit(), gen);
+  }, busy);
+};
+$('stop').onclick = () => AG.run.stop();
+$('board').onclick = e => {
+  const b = e.target.closest('[data-a]'); if (!b) return;
+  const x = S.items.find(y => y.id === b.dataset.id); if (!x) return;
+  if (b.dataset.a === 'dl') return AG.download(x.img, 'copie-' + x.lot + '-' + x.id + '.jpg');
+  if (b.dataset.a === 'cp') return AG.copy(x.prompt);
+  if (b.dataset.a === 'redo') return AG.job(() => gen(x), busy);
+  const vars = VARIATIONS.map(v => ({ id: AG.uid(), lot: 'var', label: v, ref: x.img, prompt: 'Variation of the reference image: ' + v + '. Same subject, same identity, same style. ' + (S.an ? S.an.subject : ''), st: 'wait' }));
+  S.items.splice(S.items.indexOf(x) + 1, 0, ...vars); draw();
+  AG.job(() => AG.pool(vars, AG.imgLimit(), gen), busy);
+};
+$('dl').onclick = () => AG.downloadAll(S.items.filter(x => x.img).map((x, i) => ({ url: x.img, name: 'copie-' + String(i + 1).padStart(2, '0') + '-' + x.lot + '.jpg' })));
+S.ratio = $('ratio').value;
+</script>
+</body>
+</html>

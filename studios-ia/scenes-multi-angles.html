@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Scènes Multi-Angles</title>
+<link rel="stylesheet" href="commun/studio.css">
+</head>
+<body>
+<main>
+  <div class="cols">
+    <section>
+      <div class="card">
+        <h2>1 · Photo (personnages + style)</h2>
+        <div class="drop" id="drop">📷 Photo de départ<div class="thumbs" id="thumbs"></div></div>
+        <div class="out" id="analysis" hidden></div>
+      </div>
+      <div class="card">
+        <h2>2 · La scène</h2>
+        <div id="presets"></div>
+        <label>Description de la scène</label>
+        <textarea id="scene" rows="4" placeholder="Les personnages de la photo courent vers une vieille voiture rouge sous la pluie…"></textarea>
+        <div class="row2">
+          <label>Nombre d'angles<input type="number" id="n" min="4" max="40" value="20"></label>
+          <label>Format<select id="ratio"><option value="16:9">16:9</option><option value="9:16" selected>9:16</option><option value="1:1">1:1</option></select></label>
+        </div>
+        <div class="actions"><button class="btn primary big" id="go">🎬 Générer les angles</button></div>
+        <div class="actions"><button class="btn danger" id="stop" hidden>■ Arrêter</button><button class="btn" id="play" disabled>▶ Lire les vidéos</button><button class="btn ghost" id="dl" disabled>⬇ Tout télécharger</button><button class="btn ghost" id="reset">🗑 Nouvelle scène</button></div>
+        <p class="hint">Cliquez 🎬 sur un angle pour l'animer. La session est sauvegardée dans ce navigateur.</p>
+      </div>
+    </section>
+    <section>
+      <div class="card"><div class="bar"><i id="bar"></i></div><div class="status"><span class="pill" id="pill">prêt</span><span id="status">Ajoutez une photo et décrivez la scène.</span></div></div>
+      <div class="grid" id="board"><div class="empty">Les angles de caméra apparaîtront ici.</div></div>
+    </section>
+  </div>
+</main>
+<script src="commun/agnes.js"></script>
+<script>
+'use strict';
+const { $ } = AG;
+AG.shell({ icon: '🎥', title: 'Scènes Multi-Angles', subtitle: 'Une scène filmée sous jusqu\'à 40 angles de caméra différents' });
+const PRESETS = [['🏃 Foule qui court vers la voiture', 'Les personnages de la photo courent ensemble vers une voiture, dans une rue animée, urgence et énergie.'], ['🎉 Danse collective', 'Les personnages dansent ensemble au milieu d\'une place pleine de monde, joie communicative.'], ['🚓 Discours du policier', 'Un policier fait un discours solennel devant les personnages rassemblés, tension et attention.'], ['🧺 Pique-nique', 'Les personnages pique-niquent dans un parc ensoleillé, rires et partage.'], ['💨 Poursuite', 'Une poursuite endiablée à travers les ruelles, les personnages esquivent les obstacles.']];
+const ANGLES = ['extreme wide establishing shot', 'wide shot at eye level', 'high-angle wide shot', 'aerial drone top-down view', 'low-angle hero shot', 'dutch angle medium shot', 'medium shot from the front', 'medium shot from behind', 'over-the-shoulder shot', 'reverse over-the-shoulder shot', 'close-up on the main face', 'extreme close-up on the eyes', 'close-up on hands in action', 'profile shot from the left', 'profile shot from the right', 'ground-level shot', 'shot through a foreground object', 'reflection shot in a window or puddle', 'silhouette against the light', 'tracking shot alongside the action', 'point-of-view shot of the main character', 'two-shot of two characters', 'group shot, everyone in frame', 'cowboy shot (mid-thigh)', 'insert shot of a key detail', 'telephoto compressed long shot', 'wide-angle close shot with distortion', 'bird\'s-eye view directly overhead', 'worm\'s-eye view looking up', 'shallow depth of field, background blur', 'deep focus, all planes sharp', 'backlit rim light shot', 'night version with practical lights', 'golden hour version', 'rainy atmosphere version', 'crane shot rising above the scene', 'handheld documentary-style shot', 'symmetrical centered composition', 'frame within a frame (doorway)', 'final wide shot as the scene ends'];
+const S = { ref: null, an: '', items: [] };
+AG.chips($('presets'), PRESETS.map(p => [p[0], p[1]]), { onChange: v => { if (v) { $('scene').value = v; save(); } } });
+
+const save = () => AG.db.set('scenes_session', { ref: S.ref, an: S.an, scene: $('scene').value, items: S.items.map(x => Object.assign({}, x, { st: x.st === 'run' ? 'wait' : x.st })) }).catch(() => {});
+function showRef() { $('thumbs').innerHTML = S.ref ? '<figure><img src="' + S.ref + '"></figure>' : ''; $('analysis').hidden = !S.an; $('analysis').textContent = S.an; }
+AG.dropzone($('drop'), ([u]) => { S.ref = u; S.an = ''; showRef(); save(); });
+$('scene').oninput = save;
+
+const draw = AG.throttle(() => {
+  $('board').innerHTML = S.items.length ? S.items.map((x, i) => AG.tile({ id: x.id, label: String(i + 1).padStart(2, '0') + ' · ' + x.angle, img: x.img, video: x.video, st: x.st, msg: x.msg }, { ratio: S.ratio, retry: true, tools: [{ a: 'vid', label: '🎬', title: 'Animer', when: it => it.img && it.st !== 'run' }, { a: 'redo', label: '↻', when: it => it.st !== 'run' }, { a: 'dl', label: '⬇', when: it => it.img }] })).join('') : '<div class="empty">Les angles de caméra apparaîtront ici.</div>';
+  const n = S.items.length || 1;
+  $('bar').style.width = Math.round(S.items.filter(x => x.img).length / n * 100) + '%';
+  $('dl').disabled = !S.items.some(x => x.img); $('play').disabled = !S.items.some(x => x.video);
+});
+function busy(on) { $('go').disabled = on; $('reset').disabled = on; $('stop').hidden = !on; $('pill').textContent = on ? 'en cours' : 'prêt'; $('pill').className = 'pill ' + (on ? 'run' : ''); if (!on) save(); }
+
+async function analyze() {
+  const j = await AG.chatJSON({ system: 'Directeur de casting et directeur photo. JSON strict, valeurs en ANGLAIS.', user: 'Décris les personnages (chacun : visage, cheveux, âge, tenue, couleurs) et le style visuel de cette photo. JSON : {"characters":"","style":""}', images: [S.ref], max: 1000, temp: 0.2 });
+  S.an = 'Characters: ' + (j.characters || '') + '\nStyle: ' + (j.style || ''); showRef();
+}
+async function gen(x) {
+  try { x.st = 'run'; x.msg = ''; x.img = null; x.video = null; draw(); x.img = await AG.image('Film still, ' + x.angle + '. SCENE: ' + x.scene + ' ' + S.an.replace('\n', ' ') + ' Same characters as the reference photo, identical faces and outfits, same visual style. No text, no watermark.', { refs: [S.ref], ratio: S.ratio }); x.st = 'ok'; }
+  catch (e) { if (AG.isStop(e)) { x.st = 'wait'; throw e; } if (e.fatal) throw e; x.st = 'err'; x.msg = e.message.slice(0, 60); AG.log('err', x.angle + ' : ' + e.message); }
+  finally { draw(); }
+}
+async function animate(x) {
+  try { x.st = 'run'; x.msg = 'vidéo'; draw(); x.video = await AG.video('The scene comes alive: ' + x.scene + ' Camera: ' + x.angle + ', subtle movement. Keep characters identical. Natural sound, no music, no text.', { first: x.img, seconds: 5, ratio: S.ratio, onProgress: m => { x.msg = m; draw(); } }); x.st = 'ok'; }
+  catch (e) { if (AG.isStop(e)) { x.st = 'ok'; throw e; } if (e.fatal) throw e; x.st = 'err'; x.msg = e.message.slice(0, 60); AG.log('err', e.message); }
+  finally { draw(); }
+}
+$('go').onclick = () => {
+  if (!S.ref) return AG.toast('Ajoutez une photo', 'err');
+  const scene = $('scene').value.trim(); if (scene.length < 10) return AG.toast('Décrivez la scène', 'err');
+  S.ratio = $('ratio').value;
+  const n = Math.max(4, Math.min(40, +$('n').value || 20));
+  AG.job(async () => {
+    if (!S.an) { $('status').textContent = 'Analyse de la photo…'; await analyze(); }
+    S.items = ANGLES.slice(0, n).map(a => ({ id: AG.uid(), angle: a, scene, st: 'wait' })); draw();
+    $('status').textContent = n + ' angles en cours…';
+    await AG.pool(S.items, AG.imgLimit(), gen);
+    $('status').textContent = S.items.filter(x => x.img).length + ' / ' + n + ' angles prêts';
+  }, busy);
+};
+$('stop').onclick = () => AG.run.stop();
+$('reset').onclick = () => { S.items = []; $('scene').value = ''; draw(); save(); };
+$('board').onclick = e => {
+  const b = e.target.closest('[data-a]'); if (!b) return;
+  const x = S.items.find(y => y.id === b.dataset.id); if (!x) return;
+  S.ratio = S.ratio || $('ratio').value;
+  if (b.dataset.a === 'dl') return AG.download(x.video || x.img, 'angle-' + (S.items.indexOf(x) + 1) + (x.video ? '.mp4' : '.jpg'));
+  AG.job(() => b.dataset.a === 'vid' ? animate(x) : gen(x), busy);
+};
+$('play').onclick = () => AG.playFilm(S.items.map(x => ({ url: x.video, title: x.angle })));
+$('dl').onclick = () => AG.downloadAll(S.items.map((x, i) => (x.video || x.img) && { url: x.video || x.img, name: 'angle-' + String(i + 1).padStart(2, '0') + (x.video ? '.mp4' : '.jpg') }).filter(Boolean));
+AG.db.get('scenes_session').then(s => { if (!s) return; S.ref = s.ref; S.an = s.an || ''; $('scene').value = s.scene || ''; S.items = s.items || []; S.ratio = $('ratio').value; showRef(); draw(); });
+S.ratio = $('ratio').value;
+</script>
+</body>
+</html>
