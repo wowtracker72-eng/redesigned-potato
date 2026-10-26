@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Plan-Séquence</title>
+<link rel="stylesheet" href="commun/studio.css">
+</head>
+<body>
+<main>
+  <div class="cols">
+    <section>
+      <div class="card">
+        <h2>1 · Personnage</h2>
+        <div class="drop" id="drop">📷 Photo du personnage<br><small>cliquer, glisser ou coller</small><div class="thumbs" id="thumbs"></div></div>
+      </div>
+      <div class="card">
+        <h2>2 · Histoire</h2>
+        <div class="tabs" id="src"><button data-v="news" class="on">Actualités du jour</button><button data-v="story">Mon histoire</button></div>
+        <div id="src-news"><label>Rubrique</label><select id="topic"><option value="une">À la une</option><option value="france">France</option><option value="monde">Monde</option><option value="business">Économie</option><option value="tech">Technologie</option><option value="science">Science</option><option value="sante">Santé</option><option value="sport">Sport</option><option value="culture">Culture</option></select></div>
+        <div id="src-story" hidden><label>Votre histoire (au moins 30 caractères)</label><textarea id="story" rows="6" placeholder="Un vieux pêcheur traverse la ville au lever du jour…"></textarea></div>
+      </div>
+      <div class="card">
+        <h2>3 · Réalisation</h2>
+        <label>Forme</label>
+        <div id="mode"></div>
+        <div class="row2">
+          <label>Nombre de segments<input type="number" id="n" min="4" max="24" value="12"></label>
+          <label>Durée d'un segment<select id="secs"><option value="5">5 s</option><option value="10" selected>10 s</option></select></label>
+        </div>
+        <p class="hint" id="total"></p>
+        <div class="actions"><button class="btn primary big" id="go">▶ Lancer la création</button></div>
+        <div class="actions"><button class="btn danger" id="stop" hidden>■ Arrêter</button><button class="btn" id="play" disabled>▶ Diffuser le film</button><button class="btn ghost" id="dl" disabled>⬇ Tout télécharger</button></div>
+      </div>
+    </section>
+    <section>
+      <div class="card">
+        <div class="steps" id="steps"></div>
+        <div class="bar"><i id="bar"></i></div>
+        <div class="status"><span class="pill" id="pill">prêt</span><span id="status">Ajoutez une photo, choisissez l'histoire puis lancez.</span></div>
+        <h3 id="title"></h3>
+      </div>
+      <div class="grid" id="board"><div class="empty">Le storyboard apparaîtra ici.</div></div>
+    </section>
+  </div>
+</main>
+<script src="commun/agnes.js"></script>
+<script>
+'use strict';
+const { $, esc } = AG;
+AG.shell({ icon: '🎞️', title: 'Plan-Séquence', subtitle: 'Une photo → un film continu en un seul plan, raconté en français' });
+
+const STEPS = ['Analyse', 'Scénario', 'Images', 'Vidéos'];
+const MOVES = ['slow tai-chi flow with circular arms', 'contemporary dance spiral, arms sweeping', 'calm kung-fu form, controlled balance', 'meditative walk with open palms', 'fluid torso rotation, expressive hands', 'slow graceful kata, extended arms'];
+const CAMS = { plan: ['smooth lateral tracking shot to the right', 'slow dolly-in while the character walks right', 'slow arc around the character', 'slow crane down to eye level', 'gentle push-in following the walk'], montage: ['wide establishing shot then medium reverse shot', 'medium shot then hard cut to close-up', 'over-the-shoulder then reverse shot', 'insert cut then wide pull-back', 'slow pan then snap to medium shot'] };
+const S = { ref: null, src: 'news', look: null, script: null, frames: [], vids: [] };
+const getMode = AG.chips($('mode'), [['Plan-séquence continu', 'plan'], ['Montage avec coupes', 'montage']], { value: 'plan' });
+
+// ── Saisie ──
+AG.dropzone($('drop'), ([u]) => { S.ref = u; $('thumbs').innerHTML = '<figure><img src="' + u + '"><button data-x>✕</button></figure>'; });
+$('thumbs').onclick = e => { if (e.target.matches('[data-x]')) { e.stopPropagation(); S.ref = null; $('thumbs').innerHTML = ''; } };
+$('src').onclick = e => { const b = e.target.closest('button'); if (!b) return; S.src = b.dataset.v; $('src').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); $('src-news').hidden = S.src !== 'news'; $('src-story').hidden = S.src !== 'story'; };
+const N = () => Math.max(4, Math.min(24, +$('n').value || 12));
+const showTotal = () => { $('total').textContent = 'Film final ≈ ' + AG.fmtTime(N() * +$('secs').value * 1000) + ' · ' + N() + ' vidéos à générer'; };
+$('n').oninput = $('secs').onchange = showTotal; showTotal();
+$('story').value = AG.store.get('ps_story', '');
+$('story').oninput = () => AG.store.set('ps_story', $('story').value);
+
+// ── Affichage ──
+const draw = AG.throttle(() => {
+  if (!S.script) return;
+  $('board').innerHTML = S.vids.map((v, i) => AG.tile({ id: i, label: String(i + 1).padStart(2, '0') + ' · ' + S.script.segs[i].type, text: S.script.segs[i].text, img: S.frames[i] && S.frames[i].url, video: v.url, st: v.st === 'wait' && S.frames[i] && S.frames[i].st === 'run' ? 'run' : v.st, msg: v.msg }, { retry: true, tools: [{ a: 'redo', label: '↻ Refaire', when: it => it.st === 'err' || it.st === 'ok' }] })).join('');
+  const fi = S.frames.filter(f => f.url).length, vo = S.vids.filter(v => v.url).length;
+  $('bar').style.width = Math.round((fi / Math.max(1, S.frames.length)) * 35 + (vo / Math.max(1, S.vids.length)) * 65) + '%';
+  $('play').disabled = !vo; $('dl').disabled = !vo;
+});
+function setStatus(t, p) { $('status').textContent = t; $('pill').textContent = p || 'en cours'; $('pill').className = 'pill ' + (p === 'terminé' ? 'ok' : p === 'erreur' ? 'err' : 'run'); }
+function busy(on) { $('go').disabled = on; $('stop').hidden = !on; if (!on && S.script) draw(); }
+
+// ── Étapes ──
+async function analyze() {
+  try {
+    const j = await AG.chatJSON({ system: 'Directeur de casting. Réponds uniquement en JSON.', user: 'Décris cette image. JSON : {"character":"precise English physical description (face, hair, age, skin, clothing, colors)","medium":"English description of the medium and art style","live":true si vraie photographie sinon false}', images: [S.ref], max: 800, temp: 0.2 });
+    return { ch: String(j.character || 'the person in the reference image'), md: String(j.medium || ''), live: j.live !== false };
+  } catch (e) { if (AG.isStop(e)) throw e; AG.log('warn', 'Analyse photo : ' + e.message); return { ch: 'the person in the reference image', md: '', live: true }; }
+}
+function segType(i, n) { return i === 0 ? 'intro' : i === n - 1 ? 'outro' : i % 2 ? 'actu' : 'réflexion'; }
+async function writeScript(news, mode, n, secs) {
+  const words = secs >= 10 ? '18 à 24' : '9 à 12';
+  const date = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const source = S.src === 'news'
+    ? 'TITRES D\'ACTUALITÉ (seule source ; n\'invente aucun fait, chiffre, nom ni citation) :\n' + (news.map((t, i) => (i + 1) + '. ' + t.title).join('\n') || '(aucun : reste général)')
+    : 'HISTOIRE DE L\'UTILISATEUR (respecte ton, personnages et intention) :\n"""\n' + $('story').value.trim().slice(0, 4000) + '\n"""';
+  const form = mode === 'plan'
+    ? 'un PLAN-SÉQUENCE CONTINU : un personnage marche vers la droite sans s\'arrêter, la caméra le suit, le texte est un monologue continu. "decor" = lieu unique par segment (anglais) que le personnage traverse ; "action" = mouvement lent et fluide (anglais) ; "camera" = mouvement qui suit la marche (anglais).'
+    : 'un MONTAGE type JT ou court-métrage : chaque segment contient 3 à 5 plans avec des coupes franches. "decor" = lieu(x) du segment (anglais) ; "action" = description des plans successifs (anglais) ; "camera" = mouvements avec coupes (anglais).';
+  const user = 'Date : ' + date + '.\nÉcris ' + form + '\n' + n + ' segments de ' + secs + ' secondes.\n\n' + source
+    + '\n\nSTRUCTURE : segment 1 = ouverture (salutation, fil conducteur) ; segments pairs = un fait précis ; segments impairs = réflexion qui prolonge et fait la transition (citation réelle dans "quote" seulement si tu en es sûr) ; dernier segment = conclusion et au revoir.'
+    + '\n"text" : français parlé naturel, ' + words + ' mots, sans emoji. "topic" : 2-3 mots anglais.'
+    + '\nRéponds UNIQUEMENT par ce JSON : {"title":"","segments":[{"text":"","topic":"","decor":"","action":"","camera":"","quote":""}]} avec exactement ' + n + ' segments.';
+  let segs = [], title = 'Plan-Séquence';
+  for (let a = 0; a < 2 && segs.length < n * 0.75; a++) {
+    try { const j = await AG.chatJSON({ system: 'Scénariste et journaliste rigoureux. JSON strict uniquement.', user, max: 8000, temp: 0.75 }); segs = Array.isArray(j.segments) ? j.segments : []; title = j.title || title; }
+    catch (e) { if (AG.isStop(e) || e.fatal) throw e; AG.log('warn', 'Scénario : ' + e.message); }
+  }
+  if (segs.length < n) AG.log('warn', 'Scénario incomplet (' + segs.length + '/' + n + ') — segments manquants complétés');
+  const cams = CAMS[mode];
+  return { title, segs: Array.from({ length: n }, (_, k) => {
+    const s = segs[k] || {}, type = segType(k, n);
+    const dflt = type === 'intro' ? 'Bonjour, et bienvenue. Aujourd\'hui, prenons le temps de regarder notre époque.' : type === 'outro' ? 'Voilà pour aujourd\'hui. Merci de votre attention, et à très bientôt.' : type === 'actu' && news.length ? news[(k >> 1) % news.length].title : 'Chaque événement nous invite à prendre un peu de recul.';
+    return { type, text: String(s.text || dflt).trim(), topic: String(s.topic || 'city life'), decor: String(s.decor || 'colorful city street at dusk'), action: String(s.action || MOVES[k % MOVES.length]), camera: String(s.camera || cams[k % cams.length]), quote: String(s.quote || '') };
+  }) };
+}
+const look = () => 'Same person as the reference image (identical face, hair, skin tone and outfit): ' + S.look.ch + '. ' + (S.look.live ? 'Real photograph, natural light, subtle film grain.' : 'Keep exactly the medium and art style of the reference: ' + S.look.md + '.');
+function imgPrompt(i, mode) {
+  const segs = S.script.segs, s = segs[Math.min(i, segs.length - 1)];
+  if (mode === 'plan') {
+    const pose = i === 0 ? 'standing at the start of the walk, giving a small welcoming nod' : i === segs.length ? 'turning back with a gentle farewell wave while still stepping right' : 'caught mid-stride walking to the right, ' + s.action;
+    return 'Vertical 9:16 cinematic film still. ' + look() + ' Setting: ' + s.decor + ', rich details illustrating "' + s.topic + '". Pose: full-body three-quarter view, ' + pose + ', character in the right third of the frame. Camera: ' + s.camera + '. No text, no logo, no watermark, no border.';
+  }
+  return 'Vertical 9:16 cinematic film still, opening shot of a scene. ' + look() + ' Setting: ' + s.decor + ', rich details illustrating "' + s.topic + '". Wide or medium establishing composition: ' + s.action + '. Dramatic light. No text, no logo, no watermark.';
+}
+function vidPrompt(i, mode) {
+  const s = S.script.segs[i], p = S.script.segs[Math.max(0, i - 1)];
+  if (mode === 'plan') return 'The person moves smoothly from the first-frame pose to the last-frame pose, walking calmly toward the right in one continuous take. Movement: ' + s.action + '. ' + (i ? 'The setting evolves naturally from ' + p.decor + ' to ' + s.decor + '.' : 'Setting: ' + s.decor + '.') + ' Camera: ' + s.camera + '. Natural ambience and footsteps only, no music, no speech, no on-screen text. Keep identity, outfit and style identical.';
+  return 'Cinematic montage of 3 to 5 shots with hard cuts. Subject: the character of the first frame. ' + s.action + '. Camera: ' + s.camera + '. Setting: ' + s.decor + '. Realistic ambience only, no music, no speech, no on-screen text. Keep identity and outfit identical. Vertical 9:16.';
+}
+async function makeFrame(i, mode) {
+  const f = S.frames[i]; f.st = 'run'; f.url = null; draw();
+  try { f.url = await AG.image(imgPrompt(i, mode), { refs: [S.ref], ratio: '9:16' }); f.st = 'ok'; }
+  catch (e) { if (AG.isStop(e) || e.fatal) throw e; f.st = 'err'; AG.log('err', 'Image ' + (i + 1) + ' : ' + e.message); }
+  draw();
+}
+async function makeVideo(i, mode, secs) {
+  const v = S.vids[i];
+  const first = S.frames[i].url, last = mode === 'plan' ? S.frames[i + 1].url : null;
+  v.st = 'run'; v.url = null; v.msg = 'envoi'; draw();
+  try { v.url = await AG.video(vidPrompt(i, mode), { first: first || S.ref, last, seconds: secs, ratio: '9:16', onProgress: m => { v.msg = m; draw(); } }); v.st = 'ok'; AG.log('ok', 'Vidéo ' + (i + 1) + ' prête'); }
+  catch (e) { if (AG.isStop(e)) { v.st = 'wait'; throw e; } if (e.fatal) throw e; v.st = 'err'; v.msg = e.message.slice(0, 60); AG.log('err', 'Vidéo ' + (i + 1) + ' : ' + e.message); }
+  draw();
+}
+
+// ── Pipeline ──
+async function pipeline() {
+  const mode = getMode(), n = N(), secs = +$('secs').value;
+  S.mode = mode; S.secs = secs;
+  AG.steps($('steps'), STEPS, 0); setStatus('Analyse de la photo' + (S.src === 'news' ? ' et lecture des actualités…' : '…'));
+  const [lk, news] = await Promise.all([analyze(), S.src === 'news' ? AG.news($('topic').value, 24) : Promise.resolve([])]);
+  S.look = lk;
+  if (S.src === 'news') AG.log('ok', news.length + ' titres d\'actualité récupérés');
+  AG.steps($('steps'), STEPS, 1); setStatus('Écriture du scénario…');
+  S.script = await writeScript(news, mode, n, secs);
+  $('title').textContent = S.script.title;
+  S.frames = Array.from({ length: mode === 'plan' ? n + 1 : n }, () => ({ st: 'wait', url: null }));
+  S.vids = Array.from({ length: n }, () => ({ st: 'wait', url: null, msg: '' }));
+  draw();
+  AG.steps($('steps'), STEPS, 2); setStatus('Images et vidéos en parallèle…');
+  // Chaque vidéo démarre dès que ses images (début, et fin en plan-séquence) sont prêtes.
+  const done = S.frames.map(() => { let r; const p = new Promise(x => { r = x; }); return { p, r }; });
+  const imgs = AG.pool(S.frames.map((_, i) => i), AG.imgLimit(), async i => { try { await makeFrame(i, mode); } finally { done[i].r(); } })
+    .then(() => { AG.steps($('steps'), STEPS, 3); setStatus('Génération des vidéos…'); });
+  const vids = AG.pool(S.vids.map((_, i) => i), S.vids.length, async i => {
+    await done[i].p; if (mode === 'plan') await done[i + 1].p;
+    AG.run.check();
+    if (!S.frames[i].url) S.frames[i].url = S.ref; // image manquante : on part de la photo
+    if (mode === 'plan' && !S.frames[i + 1].url) S.frames[i + 1].url = S.frames[i].url;
+    await makeVideo(i, mode, secs);
+  });
+  await Promise.all([imgs, vids]);
+  const ok = S.vids.filter(v => v.url).length;
+  AG.steps($('steps'), STEPS, 4);
+  setStatus(ok + ' / ' + n + ' vidéos prêtes' + (ok < n ? ' — cliquez ↻ sur une vignette en échec' : ''), 'terminé');
+  AG.toast('Film prêt : ' + ok + ' / ' + n + ' vidéos');
+}
+
+$('go').onclick = () => {
+  if (!S.ref) return AG.toast('Ajoutez une photo du personnage', 'err');
+  if (S.src === 'story' && $('story').value.trim().length < 30) return AG.toast('Écrivez une histoire d\'au moins 30 caractères', 'err');
+  AG.job(pipeline, busy).then(ok => { if (!ok && S.script) setStatus('Interrompu — les éléments déjà prêts sont conservés', 'erreur'); });
+};
+$('stop').onclick = () => AG.run.stop();
+$('board').onclick = e => {
+  const b = e.target.closest('[data-a="redo"]'); if (!b) return;
+  const i = +b.dataset.id;
+  AG.job(async () => {
+    if (!S.frames[i].url) await makeFrame(i, S.mode);
+    if (S.mode === 'plan' && !S.frames[i + 1].url) await makeFrame(i + 1, S.mode);
+    await makeVideo(i, S.mode, S.secs);
+  }, busy);
+};
+$('play').onclick = () => AG.playFilm(S.vids.map((v, i) => ({ url: v.url, text: S.script.segs[i].text })));
+$('dl').onclick = () => AG.downloadAll(S.vids.map((v, i) => v.url && { url: v.url, name: 'plan-sequence-' + String(i + 1).padStart(2, '0') + '.mp4' }).filter(Boolean));
+AG.steps($('steps'), STEPS, -1);
+</script>
+</body>
+</html>

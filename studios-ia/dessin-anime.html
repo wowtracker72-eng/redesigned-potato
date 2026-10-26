@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dessin Animé</title>
+<link rel="stylesheet" href="commun/studio.css">
+</head>
+<body>
+<main>
+  <div class="cols">
+    <section>
+      <div class="card">
+        <h2>1 · L'histoire</h2>
+        <label>Idée du dessin animé</label>
+        <textarea id="idea" rows="4" placeholder="Une petite tortue qui rêve de voler apprend à faire confiance à ses amis…"></textarea>
+        <label>Ton</label><div id="tone"></div>
+        <label>Public</label><div id="public"></div>
+        <label>Style d'animation</label>
+        <select id="look"><option value="3D animated feature film style, Pixar-like, soft global illumination, expressive characters">3D façon Pixar</option><option value="2D hand-drawn Disney classic animation style, clean lines, rich backgrounds">2D classique Disney</option><option value="Studio Ghibli hand-painted anime style, watercolor backgrounds">Anime façon Ghibli</option><option value="claymation stop-motion style, tactile plasticine textures">Pâte à modeler</option><option value="flat vector cartoon style, bold colors, thick outlines">Cartoon plat moderne</option><option value="children's picture book watercolor illustration style">Livre illustré aquarelle</option></select>
+        <label>Personnage principal (photo facultative pour s'en inspirer)</label>
+        <div class="drop" id="drop">🧸 Photo d'inspiration<div class="thumbs" id="thumbs"></div></div>
+      </div>
+      <div class="card">
+        <h2>2 · Format</h2>
+        <div class="row3">
+          <label>Scènes<input type="number" id="n" min="3" max="16" value="6"></label>
+          <label>Durée / clip<select id="secs"><option value="5" selected>5 s</option><option value="6">6 s</option><option value="10">10 s</option></select></label>
+          <label>Format<select id="ratio"><option value="16:9">16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option></select></label>
+        </div>
+        <div class="actions"><button class="btn primary big" id="go">✏️ Créer le dessin animé</button></div>
+        <div class="actions"><button class="btn danger" id="stop" hidden>■ Arrêter</button><button class="btn" id="play" disabled>▶ Lire tout</button><button class="btn ghost" id="dl" disabled>⬇ Tout télécharger</button></div>
+      </div>
+    </section>
+    <section>
+      <div class="card">
+        <div class="steps" id="steps"></div>
+        <div class="bar"><i id="bar"></i></div>
+        <div class="status"><span class="pill" id="pill">prêt</span><span id="status">Racontez votre idée puis lancez.</span></div>
+        <div id="head" style="display:flex;gap:12px;align-items:flex-start"></div>
+      </div>
+      <div class="grid" id="board"><div class="empty">Les scènes apparaîtront ici.</div></div>
+    </section>
+  </div>
+</main>
+<script src="commun/agnes.js"></script>
+<script>
+'use strict';
+const { $, esc } = AG;
+AG.shell({ icon: '✏️', title: 'Dessin Animé', subtitle: 'De l\'idée à l\'écran : personnage cohérent, scènes animées, narration' });
+const STEPS = ['Scénario', 'Personnage', 'Scènes', 'Animation'];
+const S = { inspo: null, sheet: null, story: null, scenes: [] };
+const getTone = AG.chips($('tone'), ['Drôle', 'Tendre', 'Aventure', 'Magique', 'Éducatif', 'Mystérieux'], { value: 'Tendre' });
+const getPublic = AG.chips($('public'), [['3–6 ans', 'tout-petits de 3 à 6 ans'], ['7–10 ans', 'enfants de 7 à 10 ans'], ['Famille', 'toute la famille'], ['Adultes', 'adultes']], { value: 'enfants de 7 à 10 ans' });
+$('idea').value = AG.store.get('da_idea', ''); $('idea').oninput = () => AG.store.set('da_idea', $('idea').value);
+AG.dropzone($('drop'), ([u]) => { S.inspo = u; $('thumbs').innerHTML = '<figure><img src="' + u + '"><button data-x>✕</button></figure>'; });
+$('thumbs').onclick = e => { if (e.target.matches('[data-x]')) { e.stopPropagation(); S.inspo = null; $('thumbs').innerHTML = ''; } };
+
+const draw = AG.throttle(() => {
+  if (!S.story) return;
+  $('head').innerHTML = (S.sheet ? '<img src="' + esc(S.sheet) + '" style="width:120px;border-radius:8px">' : '') + '<div><h3>' + esc(S.story.title) + '</h3><p class="hint">' + esc(S.story.hero_fr || '') + '</p></div>';
+  $('board').innerHTML = S.scenes.map((s, i) => AG.tile({ id: i, label: 'Scène ' + (i + 1), text: s.narration, img: s.img, video: s.video, st: s.st, msg: s.msg }, { ratio: S.ratio, retry: true, tools: [{ a: 'redo', label: '↻' }, { a: 'dl', label: '⬇', when: it => it.video }] })).join('');
+  const im = S.scenes.filter(s => s.img).length, vd = S.scenes.filter(s => s.video).length, n = S.scenes.length || 1;
+  $('bar').style.width = Math.round(im / n * 35 + vd / n * 65) + '%';
+  $('play').disabled = !vd; $('dl').disabled = !vd;
+});
+function setStatus(t, p) { $('status').textContent = t; $('pill').textContent = p || 'en cours'; $('pill').className = 'pill ' + (p === 'terminé' ? 'ok' : 'run'); }
+function busy(on) { $('go').disabled = on; $('stop').hidden = !on; }
+
+async function writeStory(n, secs) {
+  const user = 'Idée : ' + ($('idea').value.trim() || 'invente une histoire originale et attachante') + '\nTon : ' + getTone() + '. Public : ' + getPublic() + '.'
+    + (S.inspo ? '\nLe héros s\'inspire de la photo jointe (transforme-le en personnage de dessin animé).' : '')
+    + '\nÉcris un dessin animé en EXACTEMENT ' + n + ' scènes de ' + secs + ' s avec un début, une péripétie et une fin heureuse ou touchante. Vocabulaire adapté au public.'
+    + '\nJSON : {"title":"","hero_fr":"présentation du héros en 1 phrase","hero_en":"English character design: species, shape, colors, outfit, distinctive features (40-60 words)","scenes":[{"narration":"voix off française, ' + (secs >= 10 ? '15 à 22' : '8 à 12') + ' mots","image":"English prompt of the scene: hero action, setting, other characters, lighting (40-60 words)","motion":"English: animated action + camera move (15-25 words)"}]}';
+  const j = await AG.chatJSON({ system: 'Tu es scénariste de dessins animés primé, spécialiste des histoires pour ' + getPublic() + '. JSON strict.', user, images: S.inspo ? [S.inspo] : [], max: 6000, temp: 0.85 });
+  if (!Array.isArray(j.scenes) || !j.scenes.length) throw new Error('Histoire incomplète. Réessayez.');
+  return { title: j.title || 'Mon dessin animé', hero_fr: j.hero_fr || '', hero_en: j.hero_en || 'a cute cartoon hero', scenes: j.scenes.slice(0, n).map(s => ({ narration: s.narration || '', image: s.image || '', motion: s.motion || 'gentle animated movement', st: 'wait' })) };
+}
+async function makeScene(s, i) {
+  try {
+    if (!s.img) { s.st = 'run'; s.msg = 'dessin'; draw(); s.img = await AG.image(s.image + '. Main character (identical to the reference model sheet): ' + S.story.hero_en + '. ' + S.look + '. Vibrant, family friendly. No text, no watermark.', { refs: S.sheet ? [S.sheet] : [], ratio: S.ratio }); }
+    s.st = 'run'; s.msg = 'animation'; draw();
+    s.video = await AG.video(s.motion + '. ' + S.look + '. Keep the character design identical. Cartoon sound effects, no music, no speech, no text.', { first: s.img, seconds: S.secs, ratio: S.ratio, onProgress: m => { s.msg = m; draw(); } });
+    s.st = 'ok'; s.msg = '';
+  } catch (e) {
+    if (AG.isStop(e)) { s.st = 'wait'; throw e; }
+    if (e.fatal) throw e;
+    s.st = 'err'; s.msg = e.message.slice(0, 60); AG.log('err', 'Scène ' + (i + 1) + ' : ' + e.message);
+  } finally { draw(); }
+}
+async function pipeline() {
+  const n = Math.max(3, Math.min(16, +$('n').value || 6));
+  S.secs = +$('secs').value; S.ratio = $('ratio').value; S.look = $('look').value; S.sheet = null;
+  AG.steps($('steps'), STEPS, 0); setStatus('Écriture de l\'histoire…');
+  S.story = await writeStory(n, S.secs); S.scenes = S.story.scenes; draw();
+  AG.steps($('steps'), STEPS, 1); setStatus('Création de la fiche personnage (garantit un héros identique dans chaque scène)…');
+  try { S.sheet = await AG.image('Character model sheet, single character centered, full body front view, plain light background. ' + S.story.hero_en + '. ' + S.look + '. No text.', { refs: S.inspo ? [S.inspo] : [], ratio: '1:1' }); }
+  catch (e) { if (AG.isStop(e) || e.fatal) throw e; AG.log('warn', 'Fiche personnage : ' + e.message); }
+  draw();
+  AG.steps($('steps'), STEPS, 2); setStatus('Dessin et animation des scènes…');
+  await AG.pool(S.scenes, S.scenes.length, makeScene);
+  AG.steps($('steps'), STEPS, 4);
+  setStatus(S.scenes.filter(s => s.video).length + ' / ' + S.scenes.length + ' scènes animées', 'terminé');
+}
+$('go').onclick = () => AG.job(pipeline, busy);
+$('stop').onclick = () => AG.run.stop();
+$('board').onclick = e => {
+  const b = e.target.closest('[data-a]'); if (!b) return;
+  const i = +b.dataset.id, s = S.scenes[i];
+  if (b.dataset.a === 'dl') return AG.download(s.video, 'dessin-anime-' + String(i + 1).padStart(2, '0') + '.mp4');
+  s.img = null; s.video = null; AG.job(() => makeScene(s, i), busy);
+};
+$('play').onclick = () => AG.playFilm(S.scenes.map(s => ({ url: s.video, text: s.narration })));
+$('dl').onclick = () => AG.downloadAll(S.scenes.map((s, i) => s.video && { url: s.video, name: 'dessin-anime-' + String(i + 1).padStart(2, '0') + '.mp4' }).filter(Boolean));
+AG.steps($('steps'), STEPS, -1);
+</script>
+</body>
+</html>

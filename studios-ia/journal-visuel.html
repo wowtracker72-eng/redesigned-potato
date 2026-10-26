@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Journal Visuel</title>
+<link rel="stylesheet" href="commun/studio.css">
+</head>
+<body>
+<main>
+  <div class="cols">
+    <section>
+      <div class="card">
+        <h2>1 · Image de référence</h2>
+        <p class="hint">Elle définit tout : personnage, matière, lumière, palette. Le journal entier sera tourné dans ce style.</p>
+        <div class="drop" id="drop">🖼️ Image de référence<div class="thumbs" id="thumbs"></div></div>
+        <div class="actions"><button class="btn small" id="an" disabled>🔍 Analyser le style</button></div>
+        <div class="out" id="analysis" hidden></div>
+      </div>
+      <div class="card">
+        <h2>2 · Journal</h2>
+        <label>Forme</label>
+        <div id="mode"></div>
+        <p class="hint" id="modehint"></p>
+        <div class="row2">
+          <label>Rubrique<select id="topic"><option value="une">À la une</option><option value="france">France</option><option value="monde">International</option><option value="business">Économie</option><option value="tech">Technologie</option><option value="science">Science</option><option value="sante">Santé</option><option value="culture">Culture</option></select></label>
+          <label>Nombre d'infos<input type="number" id="n" min="3" max="12" value="6"></label>
+        </div>
+        <div class="row2">
+          <label>Durée / segment<select id="secs"><option value="5">5 s</option><option value="10" selected>10 s</option></select></label>
+          <label>Format<select id="ratio"><option value="9:16">9:16</option><option value="16:9">16:9</option></select></label>
+        </div>
+        <p class="hint" id="total"></p>
+        <div class="actions"><button class="btn primary big" id="go">▸ Lancer le journal</button></div>
+        <div class="actions"><button class="btn danger" id="stop" hidden>■ Arrêter</button><button class="btn" id="play" disabled>▸ Diffuser</button><button class="btn ghost" id="dl" disabled>⬇ Tout télécharger</button><button class="btn ghost" id="cp" disabled>📋 Copier le texte</button></div>
+      </div>
+    </section>
+    <section>
+      <div class="card">
+        <div class="steps" id="steps"></div>
+        <div class="bar"><i id="bar"></i></div>
+        <div class="status"><span class="pill" id="pill">prêt</span><span id="status">Ajoutez une image de référence.</span></div>
+        <h3 id="title"></h3><p class="hint" id="angle"></p>
+      </div>
+      <div class="grid" id="board"><div class="empty">Les segments du journal apparaîtront ici.</div></div>
+    </section>
+  </div>
+</main>
+<script src="commun/agnes.js"></script>
+<script>
+'use strict';
+const { $, esc } = AG;
+AG.shell({ icon: '📰', title: 'Journal Visuel', subtitle: 'Une image de référence pilote le style d\'un journal filmé' });
+const STEPS = ['Analyse', 'Actualités', 'Écriture', 'Images', 'Vidéos'];
+const S = { ref: null, style: null, j: null, segs: [] };
+const MODES = { discours: 'Un discours éditorial continu, un segment par information.', choeur: 'Chaque information brute est suivie de la réponse d\'un Chœur intellectuel humaniste (2 segments par info).' };
+const getMode = AG.chips($('mode'), [['Discours éditorial', 'discours'], ['Chœur intellectuel', 'choeur']], { value: 'discours', onChange: v => { $('modehint').textContent = MODES[v]; total(); } });
+$('modehint').textContent = MODES.discours;
+const N = () => Math.max(3, Math.min(12, +$('n').value || 6));
+const segCount = () => getMode() === 'choeur' ? N() * 2 : N() + 2;
+function total() { $('total').textContent = segCount() + ' vidéos · ≈ ' + AG.fmtTime(segCount() * +$('secs').value * 1000); }
+$('n').oninput = $('secs').onchange = total; total();
+
+AG.dropzone($('drop'), ([u]) => { S.ref = u; S.style = null; $('analysis').hidden = true; $('an').disabled = false; $('thumbs').innerHTML = '<figure><img src="' + u + '"><button data-x>✕</button></figure>'; $('status').textContent = 'Image prête. Lancez le journal.'; });
+$('thumbs').onclick = e => { if (e.target.matches('[data-x]')) { e.stopPropagation(); S.ref = null; S.style = null; $('an').disabled = true; $('analysis').hidden = true; $('thumbs').innerHTML = ''; } };
+
+async function analyze() {
+  const j = await AG.chatJSON({ system: 'Tu es un directeur artistique expert en analyse d\'image. JSON strict.', user: 'Analyse cette image de référence pour reproduire son univers dans tout un film. JSON (valeurs en ANGLAIS) : {"subject":"main character or subject, precise physical description","medium":"photo / illustration / 3D / painting… precise","lighting":"","palette":"dominant colors","composition":"","texture":"grain, brush, render quality","mood":"","style_prompt":"one dense English paragraph (60-90 words) reproducing this exact style"}', images: [S.ref], max: 1500, temp: 0.2 });
+  S.style = j;
+  $('analysis').hidden = false;
+  $('analysis').textContent = Object.entries(j).map(([k, v]) => k + ' : ' + v).join('\n');
+  return j;
+}
+$('an').onclick = () => AG.job(analyze, on => { $('an').disabled = on; });
+
+const draw = AG.throttle(() => {
+  if (!S.j) return;
+  $('board').innerHTML = S.segs.map((s, i) => AG.tile({ id: i, label: String(i + 1).padStart(2, '0') + ' · ' + s.role, text: s.text, img: s.img, video: s.video, st: s.st, msg: s.msg }, { ratio: S.ratio, retry: true, tools: [{ a: 'redo', label: '↻' }, { a: 'dl', label: '⬇', when: it => it.video }] })).join('');
+  const im = S.segs.filter(s => s.img).length, vd = S.segs.filter(s => s.video).length, n = S.segs.length || 1;
+  $('bar').style.width = Math.round(im / n * 35 + vd / n * 65) + '%';
+  $('play').disabled = !vd; $('dl').disabled = !vd; $('cp').disabled = false;
+});
+function setStatus(t, p) { $('status').textContent = t; $('pill').textContent = p || 'en cours'; $('pill').className = 'pill ' + (p === 'terminé' ? 'ok' : p === 'erreur' ? 'err' : 'run'); }
+function busy(on) { $('go').disabled = on; $('an').disabled = on || !S.ref; $('stop').hidden = !on; }
+
+async function write(news, mode, n, secs) {
+  const words = secs >= 10 ? '18 à 26' : '9 à 13';
+  const list = news.map((x, i) => (i + 1) + '. ' + x.title + (x.desc ? ' — ' + x.desc : '')).join('\n');
+  const common = 'TITRES (seule source ; n\'invente aucun fait, chiffre, nom ni citation) :\n' + list + '\n\nChoisis ' + n + ' informations variées et définis un angle éditorial clair.\n';
+  const visual = '"scene" = prompt ANGLAIS (30-50 mots) : ce que fait le personnage de référence, dans quel décor qui illustre le propos, avec quel cadrage. "motion" = prompt ANGLAIS : geste + mouvement de caméra (15-25 mots).';
+  const user = mode === 'choeur'
+    ? common + 'Pour chaque info, 2 segments : "INFO" (fait brut, factuel, ' + words + ' mots) puis "CHŒUR" (réponse d\'un chœur intellectuel humaniste qui met en perspective, avec sagesse et sans jargon, ' + words + ' mots ; citation réelle seulement si tu en es sûr). ' + visual + ' Pour le Chœur, la scène montre le personnage dans une pose expressive, presque chorégraphiée.\nJSON : {"title":"","angle":"","segments":[{"role":"INFO|CHŒUR","text":"","scene":"","motion":""}]} — exactement ' + (n * 2) + ' segments.'
+    : common + 'Écris un discours continu : 1 segment "OUVERTURE", puis 1 segment "INFO" par information (le texte relie chaque info à la précédente), puis 1 segment "CLÔTURE". Chaque texte : ' + words + ' mots, français parlé, élégant. ' + visual + '\nJSON : {"title":"","angle":"","segments":[{"role":"OUVERTURE|INFO|CLÔTURE","text":"","scene":"","motion":""}]} — exactement ' + (n + 2) + ' segments.';
+  const j = await AG.chatJSON({ system: 'Tu es le rédacteur en chef d\'un journal télévisé français exigeant et humaniste. JSON strict, sans markdown.', user, max: 9000, temp: 0.7 });
+  const segs = Array.isArray(j.segments) ? j.segments : [];
+  if (segs.length < 3) throw new Error('Texte du journal incomplet. Réessayez.');
+  return { title: j.title || 'Journal Visuel', angle: j.angle || '', segs: segs.map(s => ({ role: String(s.role || 'INFO').toUpperCase(), text: s.text || '', scene: s.scene || 'the character stands in a symbolic setting', motion: s.motion || 'slow push-in', st: 'wait' })) };
+}
+const styleLine = () => S.style ? ' STYLE (follow exactly): ' + (S.style.style_prompt || '') + ' Subject: ' + (S.style.subject || '') + '.' : ' Same character and same visual style as the reference image.';
+async function makeSeg(s, i) {
+  try {
+    if (!s.img) { s.st = 'run'; s.msg = 'image'; draw(); s.img = await AG.image(s.scene + '.' + styleLine() + ' No text, no logo, no watermark.', { refs: [S.ref], ratio: S.ratio }); }
+    s.st = 'run'; s.msg = 'vidéo'; draw();
+    s.video = await AG.video(s.motion + '. Keep the exact visual style, character and palette of the first frame.' + (s.role.startsWith('CH') ? ' Expressive, almost choreographed gestures.' : '') + ' Natural ambience, no music, no speech, no on-screen text.', { first: s.img, seconds: S.secs, ratio: S.ratio, onProgress: m => { s.msg = m; draw(); } });
+    s.st = 'ok'; s.msg = '';
+  } catch (e) {
+    if (AG.isStop(e)) { s.st = 'wait'; throw e; }
+    if (e.fatal) throw e;
+    s.st = 'err'; s.msg = e.message.slice(0, 60); AG.log('err', 'Segment ' + (i + 1) + ' : ' + e.message);
+  } finally { draw(); }
+}
+async function pipeline() {
+  const mode = getMode(), n = N();
+  S.secs = +$('secs').value; S.ratio = $('ratio').value;
+  AG.steps($('steps'), STEPS, 0); setStatus('Analyse de l\'image de référence…');
+  const [, news] = await Promise.all([S.style ? Promise.resolve() : analyze().catch(e => { if (AG.isStop(e) || e.fatal) throw e; AG.log('warn', 'Analyse : ' + e.message); }), AG.news($('topic').value, 24)]);
+  AG.steps($('steps'), STEPS, 1);
+  if (!news.length) throw new Error('Aucune actualité récupérée. Vérifiez la connexion.');
+  AG.log('ok', news.length + ' titres récupérés');
+  AG.steps($('steps'), STEPS, 2); setStatus('Écriture du journal…');
+  S.j = await write(news, mode, n, S.secs); S.segs = S.j.segs;
+  $('title').textContent = S.j.title; $('angle').textContent = S.j.angle; draw();
+  AG.steps($('steps'), STEPS, 3); setStatus('Tournage…');
+  await AG.pool(S.segs, S.segs.length, makeSeg);
+  AG.steps($('steps'), STEPS, 5);
+  const ok = S.segs.filter(s => s.video).length;
+  setStatus(ok + ' / ' + S.segs.length + ' vidéos prêtes', 'terminé');
+}
+$('go').onclick = () => { if (!S.ref) return AG.toast('Ajoutez une image de référence', 'err'); AG.job(pipeline, busy); };
+$('stop').onclick = () => AG.run.stop();
+$('board').onclick = e => {
+  const b = e.target.closest('[data-a]'); if (!b) return;
+  const i = +b.dataset.id, s = S.segs[i];
+  if (b.dataset.a === 'dl') return AG.download(s.video, 'journal-' + String(i + 1).padStart(2, '0') + '.mp4');
+  s.img = null; s.video = null; AG.job(() => makeSeg(s, i), busy);
+};
+$('play').onclick = () => AG.playFilm(S.segs.map(s => ({ url: s.video, text: s.text, title: s.role })));
+$('dl').onclick = () => AG.downloadAll(S.segs.map((s, i) => s.video && { url: s.video, name: 'journal-' + String(i + 1).padStart(2, '0') + '.mp4' }).filter(Boolean));
+$('cp').onclick = () => AG.copy(S.j.title + '\n' + S.j.angle + '\n\n' + S.segs.map((s, i) => (i + 1) + '. ' + s.role + ' — ' + s.text).join('\n'));
+AG.steps($('steps'), STEPS, -1);
+</script>
+</body>
+</html>

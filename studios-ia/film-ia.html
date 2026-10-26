@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Film IA</title>
+<link rel="stylesheet" href="commun/studio.css">
+</head>
+<body>
+<main>
+  <div class="cols">
+    <section>
+      <div class="card">
+        <h2>1 · Point de départ</h2>
+        <label>Votre idée (une phrase suffit)</label>
+        <textarea id="idea" rows="3" placeholder="Un moine shaolin défend son village contre une tempête de sable…"></textarea>
+        <label>Photos des personnages ou du décor (facultatif, 6 max)</label>
+        <div class="drop" id="drop">📷 Ajouter des photos<div class="thumbs" id="thumbs"></div></div>
+      </div>
+      <div class="card">
+        <h2>2 · Écriture</h2>
+        <div class="tabs" id="mode"><button data-v="auto" class="on">✨ Automatique</button><button data-v="guide">📝 Guidé</button><button data-v="free">✍️ Scénario libre</button></div>
+        <div id="m-guide" hidden>
+          <div class="row2">
+            <label>Genre<select id="genre"><option>Drame</option><option>Action / arts martiaux</option><option>Comédie</option><option>Thriller</option><option>Science-fiction</option><option>Fantastique</option><option>Western</option><option>Film noir</option><option>Romance</option><option>Documentaire</option></select></label>
+            <label>Époque<select id="era"><option>Contemporaine</option><option>Antiquité</option><option>Moyen Âge</option><option>XIXᵉ siècle</option><option>Années 1920</option><option>Années 1970</option><option>Futur proche</option><option>Futur lointain</option></select></label>
+          </div>
+          <div class="row2">
+            <label>Ton<select id="tone"><option>Épique</option><option>Poétique</option><option>Sombre</option><option>Lumineux</option><option>Humoristique</option><option>Mélancolique</option><option>Tendu</option></select></label>
+            <label>Style visuel<select id="look"><option>Cinéma réaliste 35 mm</option><option>Kung-fu Shaw Brothers années 70</option><option>Animation 3D façon Pixar</option><option>Anime japonais</option><option>Noir et blanc contrasté</option><option>Aquarelle</option><option>Néon cyberpunk</option><option>Peinture à l'huile</option></select></label>
+          </div>
+        </div>
+        <div id="m-free" hidden><label>Votre scénario complet</label><textarea id="free" rows="8" placeholder="Écrivez votre histoire scène par scène…"></textarea></div>
+        <label>Réalisateur de référence (facultatif)</label>
+        <input id="director" placeholder="ex. Wong Kar-wai, Kurosawa, Villeneuve…">
+      </div>
+      <div class="card">
+        <h2>3 · Format</h2>
+        <div class="row3">
+          <label>Plans<input type="number" id="n" min="3" max="24" value="8"></label>
+          <label>Durée / plan<select id="secs"><option value="5">5 s</option><option value="6" selected>6 s</option><option value="10">10 s</option></select></label>
+          <label>Format<select id="ratio"><option value="9:16">9:16 vertical</option><option value="16:9">16:9 cinéma</option><option value="1:1">1:1 carré</option></select></label>
+        </div>
+        <label class="check"><input type="checkbox" id="videos" checked> Animer les plans en vidéo</label>
+        <p class="hint" id="total"></p>
+        <div class="actions"><button class="btn primary big" id="go">🎬 Créer le film</button></div>
+        <div class="actions"><button class="btn danger" id="stop" hidden>■ Arrêter</button><button class="btn" id="play" disabled>▶ Diffuser</button><button class="btn ghost" id="dl" disabled>⬇ Tout télécharger</button><button class="btn ghost" id="cp" disabled>📋 Copier le scénario</button></div>
+      </div>
+    </section>
+    <section>
+      <div class="card">
+        <div class="steps" id="steps"></div>
+        <div class="bar"><i id="bar"></i></div>
+        <div class="status"><span class="pill" id="pill">prêt</span><span id="status">Décrivez votre idée puis lancez.</span></div>
+        <div id="synopsis"></div>
+      </div>
+      <div class="grid" id="board"><div class="empty">Les plans du film apparaîtront ici.</div></div>
+    </section>
+  </div>
+</main>
+<script src="commun/agnes.js"></script>
+<script>
+'use strict';
+const { $, esc } = AG;
+AG.shell({ icon: '🎬', title: 'Film IA', subtitle: 'Idée ou photos → scénario → plans → court-métrage narré' });
+const STEPS = ['Analyse', 'Scénario', 'Images', 'Vidéos'];
+const S = { refs: [], mode: 'auto', film: null, shots: [] };
+
+// ── Saisie ──
+function showRefs() { $('thumbs').innerHTML = S.refs.map((u, i) => '<figure><img src="' + u + '"><button data-x="' + i + '">✕</button></figure>').join(''); }
+AG.dropzone($('drop'), list => { S.refs = S.refs.concat(list).slice(0, 6); showRefs(); }, true);
+$('thumbs').onclick = e => { const x = e.target.closest('[data-x]'); if (x) { e.stopPropagation(); S.refs.splice(+x.dataset.x, 1); showRefs(); } };
+$('mode').onclick = e => { const b = e.target.closest('button'); if (!b) return; S.mode = b.dataset.v; $('mode').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); $('m-guide').hidden = S.mode !== 'guide'; $('m-free').hidden = S.mode !== 'free'; };
+const N = () => Math.max(3, Math.min(24, +$('n').value || 8));
+const showTotal = () => { $('total').textContent = N() + ' plans · film ≈ ' + AG.fmtTime(N() * +$('secs').value * 1000) + ($('videos').checked ? '' : ' (images seules)'); };
+['n', 'secs', 'videos'].forEach(id => $(id).addEventListener('input', showTotal)); showTotal();
+['idea', 'free', 'director'].forEach(id => { $(id).value = AG.store.get('film_' + id, ''); $(id).oninput = () => AG.store.set('film_' + id, $(id).value); });
+
+// ── Affichage ──
+const draw = AG.throttle(() => {
+  if (!S.film) return;
+  $('board').innerHTML = S.shots.map((s, i) => AG.tile({ id: i, label: String(i + 1).padStart(2, '0') + (s.type ? ' · ' + s.type : ''), text: s.caption, img: s.img, video: s.video, st: s.st, msg: s.msg }, { ratio: S.ratio, retry: true, tools: [{ a: 'redo', label: '↻', title: 'Refaire ce plan' }, { a: 'dl', label: '⬇', title: 'Télécharger', when: it => it.video || it.img }] })).join('');
+  const im = S.shots.filter(s => s.img).length, vd = S.shots.filter(s => s.video).length, n = S.shots.length || 1;
+  $('bar').style.width = Math.round(S.withVideo ? im / n * 35 + vd / n * 65 : im / n * 100) + '%';
+  $('play').disabled = !vd; $('dl').disabled = !(vd || im); $('cp').disabled = false;
+});
+function setStatus(t, p) { $('status').textContent = t; $('pill').textContent = p || 'en cours'; $('pill').className = 'pill ' + (p === 'terminé' ? 'ok' : p === 'erreur' ? 'err' : 'run'); }
+function busy(on) { $('go').disabled = on; $('stop').hidden = !on; }
+
+// ── Étapes ──
+async function analyzeRefs() {
+  if (!S.refs.length) return '';
+  try {
+    const j = await AG.chatJSON({ system: 'Directeur de casting et chef décorateur. JSON strict.', user: 'Analyse ces ' + S.refs.length + ' image(s). JSON : {"characters":[{"name":"prénom inventé","look":"precise English description: face, hair, age, outfit, colors"}],"places":"English description of settings visible","style":"English description of medium and visual style","live":true si photographies réelles}', images: S.refs, max: 1500, temp: 0.2 });
+    return 'CHARACTERS (keep faces identical to the references): ' + (j.characters || []).map(c => c.name + ' — ' + c.look).join('; ') + '. Places: ' + (j.places || '') + '. Visual style: ' + (j.style || '') + '.';
+  } catch (e) { if (AG.isStop(e) || e.fatal) throw e; AG.log('warn', 'Analyse des photos : ' + e.message); return 'Same characters as the reference images.'; }
+}
+async function writeFilm(cast, n, secs) {
+  const brief = S.mode === 'free' ? 'SCÉNARIO FOURNI (adapte-le fidèlement en plans, ne change pas l\'histoire) :\n"""' + $('free').value.trim().slice(0, 6000) + '"""'
+    : 'IDÉE : ' + ($('idea').value.trim() || 'surprends-moi avec une histoire originale et émouvante')
+      + (S.mode === 'guide' ? '\nGenre : ' + $('genre').value + ' · Époque : ' + $('era').value + ' · Ton : ' + $('tone').value + ' · Style visuel : ' + $('look').value : '');
+  const dir = $('director').value.trim();
+  const user = brief + (dir ? '\nMise en scène dans l\'esprit de ' + dir + ' (cadrages, rythme, lumière).' : '') + (cast ? '\n' + cast : '')
+    + '\n\nDécoupe le film en EXACTEMENT ' + n + ' plans de ' + secs + ' s avec un vrai arc dramatique (exposition, montée, climax, résolution).'
+    + '\nPour chaque plan : "type" (plan large, plan moyen, gros plan, insert…), "caption" (résumé français, 1 phrase), "narration" (voix off française, ' + (secs >= 10 ? '15 à 22' : '8 à 12') + ' mots), "image" (prompt ANGLAIS détaillé de la première image : sujet, décor, lumière, cadrage, style — 50 à 80 mots, personnages décrits physiquement à chaque fois), "motion" (prompt ANGLAIS : action + mouvement de caméra, 20 à 40 mots).'
+    + '\nJSON : {"title":"","logline":"","style":"English global visual style","shots":[{"type":"","caption":"","narration":"","image":"","motion":""}]}';
+  let j = null;
+  for (let a = 0; a < 2 && !(j && Array.isArray(j.shots) && j.shots.length >= Math.ceil(n * 0.75)); a++) {
+    try { j = await AG.chatJSON({ system: 'Tu es un scénariste et réalisateur de cinéma primé. Tu écris des découpages techniques précis. JSON strict uniquement.', user, max: 10000, temp: 0.85 }); }
+    catch (e) { if (AG.isStop(e) || e.fatal) throw e; AG.log('warn', 'Scénario : ' + e.message); }
+  }
+  if (!j || !Array.isArray(j.shots) || !j.shots.length) throw new Error('Impossible d\'écrire le scénario. Réessayez.');
+  return { title: j.title || 'Sans titre', logline: j.logline || '', style: j.style || '', shots: j.shots.slice(0, n).map(s => ({ type: s.type || '', caption: s.caption || '', narration: s.narration || s.caption || '', image: s.image || s.caption || '', motion: s.motion || 'slow cinematic camera move', st: 'wait' })) };
+}
+const lookOf = () => (S.film.style ? ' Visual style: ' + S.film.style + '.' : '') + (S.refs.length ? ' Same characters as the reference images, identical faces and outfits.' : '');
+async function makeImage(s) {
+  s.st = 'run'; s.msg = 'image'; s.img = null; s.video = null; draw();
+  s.img = await AG.image(s.image + lookOf() + ' Cinematic still, ' + S.ratio + ' framing. No text, no watermark.', { refs: S.refs, ratio: S.ratio });
+}
+async function makeVideo(s) {
+  s.st = 'run'; s.msg = 'vidéo'; draw();
+  s.video = await AG.video(s.motion + '. ' + (S.film.style || '') + ' Keep characters and style identical to the first frame. Natural sound only, no music, no on-screen text.', { first: s.img, seconds: S.secs, ratio: S.ratio, onProgress: m => { s.msg = m; draw(); } });
+}
+async function makeShot(s, i) {
+  try {
+    if (!s.img) await makeImage(s);
+    if (S.withVideo) await makeVideo(s);
+    s.st = 'ok'; s.msg = ''; AG.log('ok', 'Plan ' + (i + 1) + ' prêt');
+  } catch (e) {
+    if (AG.isStop(e)) { s.st = s.img ? 'ok' : 'wait'; throw e; }
+    if (e.fatal) throw e;
+    s.st = 'err'; s.msg = e.message.slice(0, 60); AG.log('err', 'Plan ' + (i + 1) + ' : ' + e.message);
+  } finally { draw(); }
+}
+
+async function pipeline() {
+  const n = N();
+  S.secs = +$('secs').value; S.ratio = $('ratio').value; S.withVideo = $('videos').checked;
+  AG.steps($('steps'), STEPS, 0); setStatus(S.refs.length ? 'Analyse des photos…' : 'Préparation…');
+  const cast = await analyzeRefs();
+  AG.steps($('steps'), STEPS, 1); setStatus('Écriture du scénario…');
+  S.film = await writeFilm(cast, n, S.secs); S.shots = S.film.shots;
+  $('synopsis').innerHTML = '<h3>' + esc(S.film.title) + '</h3><p class="hint">' + esc(S.film.logline) + '</p>';
+  draw();
+  AG.steps($('steps'), STEPS, 2); setStatus('Création des plans…');
+  await AG.pool(S.shots, S.withVideo ? S.shots.length : AG.imgLimit(), makeShot);
+  AG.steps($('steps'), STEPS, 4);
+  const ok = S.shots.filter(s => s.st === 'ok').length;
+  setStatus(ok + ' / ' + S.shots.length + ' plans prêts' + (ok < S.shots.length ? ' — ↻ pour refaire un plan' : ''), 'terminé');
+}
+
+$('go').onclick = () => {
+  if (S.mode === 'free' && $('free').value.trim().length < 40) return AG.toast('Écrivez un scénario (40 caractères minimum)', 'err');
+  AG.job(pipeline, busy);
+};
+$('stop').onclick = () => AG.run.stop();
+$('board').onclick = e => {
+  const b = e.target.closest('[data-a]'); if (!b) return;
+  const s = S.shots[+b.dataset.id];
+  if (b.dataset.a === 'dl') return AG.download(s.video || s.img, 'film-plan-' + String(+b.dataset.id + 1).padStart(2, '0') + (s.video ? '.mp4' : '.jpg'));
+  s.img = null; s.video = null;
+  AG.job(() => makeShot(s, +b.dataset.id), busy);
+};
+$('play').onclick = () => AG.playFilm(S.shots.map(s => ({ url: s.video, text: s.narration })));
+$('dl').onclick = () => AG.downloadAll(S.shots.map((s, i) => (s.video || s.img) && { url: s.video || s.img, name: 'film-plan-' + String(i + 1).padStart(2, '0') + (s.video ? '.mp4' : '.jpg') }).filter(Boolean));
+$('cp').onclick = () => AG.copy(S.film.title + '\n' + S.film.logline + '\n\n' + S.shots.map((s, i) => (i + 1) + '. [' + s.type + '] ' + s.caption + '\n   Voix off : ' + s.narration + '\n   Image : ' + s.image + '\n   Mouvement : ' + s.motion).join('\n\n'));
+AG.steps($('steps'), STEPS, -1);
+</script>
+</body>
+</html>

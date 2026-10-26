@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Transfert de Style</title>
+<link rel="stylesheet" href="commun/studio.css">
+</head>
+<body>
+<main>
+  <div class="cols">
+    <section>
+      <div class="card">
+        <h2>1 · Image de style</h2>
+        <p class="hint">Tableau, illustration, photo stylisée… Seul son style est utilisé (couleurs, lumière, texture, trait).</p>
+        <div class="drop" id="dropS">🎨 Image de style<div class="thumbs" id="thumbS"></div></div>
+        <div class="actions"><button class="btn small" id="preview" disabled>👁️ Analyser + aperçu</button></div>
+        <div id="prev" class="thumbs"></div>
+        <div class="out" id="analysis" hidden></div>
+      </div>
+      <div class="card">
+        <h2>2 · Photos à transformer</h2>
+        <div class="drop" id="dropP">📸 Ajouter des photos (12 max)</div>
+        <div class="row2">
+          <label>Intensité<select id="intensity"><option value="subtle">Subtile — garde la composition</option><option value="moderate" selected>Modérée — équilibrée</option><option value="strong">Forte — transformation marquée</option></select></label>
+          <label>Format<select id="ratio"><option value="1:1">1:1</option><option value="9:16" selected>9:16</option><option value="16:9">16:9</option><option value="4:3">4:3</option></select></label>
+        </div>
+        <div class="actions"><button class="btn primary big" id="go">✨ Transformer les photos</button></div>
+        <h2 style="margin-top:14px">3 · Vidéo (facultatif)</h2>
+        <label>Mouvement des vidéos</label>
+        <input id="vprompt" placeholder="ex. légère brise, la caméra avance doucement">
+        <div class="row2"><label>Durée<select id="secs"><option value="5">5 s</option><option value="6" selected>6 s</option><option value="10">10 s</option></select></label><label>&nbsp;<button class="btn" id="allvid" disabled style="width:100%">🎬 Animer toutes</button></label></div>
+        <div class="actions"><button class="btn danger" id="stop" hidden>■ Arrêter</button><button class="btn ghost" id="dl" disabled>⬇ Tout télécharger</button></div>
+      </div>
+    </section>
+    <section>
+      <div class="card"><div class="bar"><i id="bar"></i></div><div class="status"><span class="pill" id="pill">prêt</span><span id="status">Ajoutez une image de style et des photos.</span></div></div>
+      <div class="grid" id="board"><div class="empty">Les photos transformées apparaîtront ici.</div></div>
+    </section>
+  </div>
+</main>
+<script src="commun/agnes.js"></script>
+<script>
+'use strict';
+const { $, esc } = AG;
+AG.shell({ icon: '🎨', title: 'Transfert de Style', subtitle: 'Analyse un style, l\'applique à vos photos, puis les anime' });
+const S = { styleImg: null, style: null, preview: null, items: [] };
+const INT = { subtle: 'Apply the style subtly: keep composition, pose, identity and details unchanged, only change colors, lighting and texture.', moderate: 'Apply the style clearly while preserving composition, pose and identity.', strong: 'Fully reinterpret the photo in this style; keep the subject recognizable and the general composition.' };
+
+AG.dropzone($('dropS'), ([u]) => { S.styleImg = u; S.style = null; S.preview = null; $('prev').innerHTML = ''; $('analysis').hidden = true; $('preview').disabled = false; $('thumbS').innerHTML = '<figure><img src="' + u + '"></figure>'; });
+AG.dropzone($('dropP'), list => { list.forEach(u => S.items.length < 12 && S.items.push({ id: AG.uid(), src: u, st: 'wait' })); draw(); }, true);
+
+const draw = AG.throttle(() => {
+  $('board').innerHTML = S.items.length ? S.items.map((x, i) => AG.tile({ id: x.id, label: '#' + (i + 1) + (x.img ? ' · stylisée' : ' · originale'), img: x.img || x.src, video: x.video, st: x.st, msg: x.msg }, { ratio: S.ratio || $('ratio').value, retry: true, tools: [{ a: 'redo', label: '↻ Style', when: it => it.st !== 'run' }, { a: 'vid', label: '🎬', title: 'Animer', when: it => it.st !== 'run' && x.img }, { a: 'dl', label: '⬇', when: () => x.img }, { a: 'rm', label: '✕', when: it => it.st !== 'run' }] })).join('') : '<div class="empty">Les photos transformées apparaîtront ici.</div>';
+  const n = S.items.length || 1;
+  $('bar').style.width = Math.round(S.items.filter(x => x.img).length / n * 100) + '%';
+  $('allvid').disabled = !S.items.some(x => x.img); $('dl').disabled = !S.items.some(x => x.img);
+});
+function busy(on) { ['go', 'preview', 'allvid'].forEach(id => { $(id).disabled = on; }); if (!on) { $('preview').disabled = !S.styleImg; draw(); } $('stop').hidden = !on; $('pill').textContent = on ? 'en cours' : 'prêt'; $('pill').className = 'pill ' + (on ? 'run' : ''); }
+
+async function analyzeStyle() {
+  const j = await AG.chatJSON({ system: 'Tu es un expert en histoire de l\'art et en direction artistique. Tu analyses UNIQUEMENT le style, jamais le sujet. JSON strict.', user: 'Analyse le style de cette image (pas son sujet). JSON, valeurs en ANGLAIS : {"medium":"","technique":"brushwork, line, rendering","palette":"precise colors","lighting":"","texture":"","mood":"","era_movement":"art movement or reference","style_prompt":"dense English paragraph (50-80 words) describing ONLY the style so it can be applied to any photo"}', images: [S.styleImg], max: 1200, temp: 0.2 });
+  S.style = j;
+  $('analysis').hidden = false; $('analysis').textContent = Object.entries(j).map(([k, v]) => k + ' : ' + v).join('\n');
+  return j;
+}
+async function ensureStyle() { if (!S.style) { $('status').textContent = 'Analyse du style…'; await analyzeStyle(); } }
+$('preview').onclick = () => AG.job(async () => {
+  await ensureStyle();
+  $('status').textContent = 'Aperçu du style…';
+  S.preview = await AG.image('A quiet village street with a person walking, rendered in this style: ' + S.style.style_prompt + ' No text.', { ratio: '1:1' });
+  $('prev').innerHTML = '<figure><img src="' + esc(S.preview) + '" title="Aperçu du style"></figure>';
+  $('status').textContent = 'Style vérifié. Ajoutez des photos et transformez-les.';
+}, busy);
+
+async function stylize(x) {
+  try {
+    x.st = 'run'; x.msg = 'transfert'; x.img = null; x.video = null; draw();
+    // La photo est envoyée seule : le style passe par le texte, pour ne pas mélanger les deux sujets.
+    x.img = await AG.image('Transform the reference photo into this exact artistic style. STYLE: ' + S.style.style_prompt + ' ' + INT[$('intensity').value] + ' Same subject, same people, same pose. No text, no watermark.', { refs: [x.src], ratio: S.ratio });
+    x.st = 'ok'; x.msg = '';
+  } catch (e) {
+    if (AG.isStop(e)) { x.st = 'wait'; throw e; }
+    if (e.fatal) throw e;
+    x.st = 'err'; x.msg = e.message.slice(0, 60); AG.log('err', e.message);
+  } finally { draw(); }
+}
+async function animate(x) {
+  try {
+    x.st = 'run'; x.msg = 'vidéo'; draw();
+    x.video = await AG.video(($('vprompt').value.trim() || 'subtle natural movement, gentle camera push-in') + '. Keep the artistic style, palette and texture of the first frame identical. No text.', { first: x.img, seconds: +$('secs').value, ratio: S.ratio, onProgress: m => { x.msg = m; draw(); } });
+    x.st = 'ok'; x.msg = '';
+  } catch (e) {
+    if (AG.isStop(e)) { x.st = 'ok'; throw e; }
+    if (e.fatal) throw e;
+    x.st = 'err'; x.msg = e.message.slice(0, 60); AG.log('err', e.message);
+  } finally { draw(); }
+}
+$('go').onclick = () => {
+  if (!S.styleImg) return AG.toast('Ajoutez d\'abord une image de style', 'err');
+  if (!S.items.length) return AG.toast('Ajoutez des photos à transformer', 'err');
+  S.ratio = $('ratio').value;
+  AG.job(async () => { await ensureStyle(); $('status').textContent = 'Transformation…'; const todo = S.items.filter(x => !x.img); await AG.pool(todo, AG.imgLimit(), stylize); $('status').textContent = S.items.filter(x => x.img).length + ' / ' + S.items.length + ' photos transformées'; }, busy);
+};
+$('allvid').onclick = () => AG.job(async () => { const todo = S.items.filter(x => x.img && !x.video); await AG.pool(todo, todo.length, animate); $('status').textContent = S.items.filter(x => x.video).length + ' vidéo(s) prête(s)'; }, busy);
+$('stop').onclick = () => AG.run.stop();
+$('board').onclick = e => {
+  const b = e.target.closest('[data-a]'); if (!b) return;
+  const x = S.items.find(y => y.id === b.dataset.id); if (!x) return;
+  const a = b.dataset.a;
+  if (a === 'rm') { S.items.splice(S.items.indexOf(x), 1); return draw(); }
+  if (a === 'dl') return AG.download(x.video || x.img, 'style-' + (S.items.indexOf(x) + 1) + (x.video ? '.mp4' : '.jpg'));
+  if (a === 'vid') return AG.job(() => animate(x), busy);
+  if (!S.styleImg) return AG.toast('Ajoutez une image de style', 'err');
+  S.ratio = S.ratio || $('ratio').value;
+  AG.job(async () => { await ensureStyle(); await stylize(x); }, busy);
+};
+$('dl').onclick = () => AG.downloadAll(S.items.map((x, i) => (x.video || x.img) && { url: x.video || x.img, name: 'style-' + (i + 1) + (x.video ? '.mp4' : '.jpg') }).filter(Boolean));
+draw();
+</script>
+</body>
+</html>

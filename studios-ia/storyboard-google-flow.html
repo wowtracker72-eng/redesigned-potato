@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Storyboard Google Flow</title>
+<link rel="stylesheet" href="commun/studio.css">
+</head>
+<body>
+<main>
+  <div class="cols">
+    <section>
+      <div class="card">
+        <h2>1 · Protagoniste (facultatif)</h2>
+        <div class="drop" id="drop">🧑 Image du protagoniste<div class="thumbs" id="thumbs"></div></div>
+        <div class="out" id="analysis" hidden></div>
+      </div>
+      <div class="card">
+        <h2>2 · Scénario</h2>
+        <textarea id="scenario" rows="8" placeholder="Racontez votre film : personnages, lieux, enjeux, fin…"></textarea>
+        <label>Style visuel (facultatif)</label>
+        <input id="look" placeholder="ex. film noir des années 50, pellicule 35 mm, pluie">
+        <div class="row3">
+          <label>Plans<select id="n"><option>20</option><option selected>40</option><option>60</option><option>100</option></select></label>
+          <label>Durée Flow<select id="secs"><option value="5">5 s</option><option value="8" selected>8 s</option></select></label>
+          <label>Format<select id="ratio"><option value="9:16">9:16</option><option value="16:9">16:9</option></select></label>
+        </div>
+        <label class="check"><input type="checkbox" id="imgs" checked> Générer la première image de chaque plan</label>
+        <div class="actions"><button class="btn primary big" id="go">🎬 Générer le storyboard</button></div>
+        <div class="actions"><button class="btn danger" id="stop" hidden>■ Arrêter</button><button class="btn ghost" id="txt" disabled>📄 Exporter les prompts Flow</button><button class="btn ghost" id="csv" disabled>📊 CSV</button><button class="btn ghost" id="dl" disabled>⬇ Images</button></div>
+      </div>
+    </section>
+    <section>
+      <div class="card">
+        <div class="steps" id="steps"></div>
+        <div class="bar"><i id="bar"></i></div>
+        <div class="status"><span class="pill" id="pill">prêt</span><span id="status">Écrivez le scénario puis générez.</span></div>
+        <h3 id="title"></h3>
+      </div>
+      <div class="grid wide" id="board"><div class="empty">Les plans du storyboard apparaîtront ici, avec le prompt vidéo à coller dans Google Flow.</div></div>
+    </section>
+  </div>
+</main>
+<script src="commun/agnes.js"></script>
+<script>
+'use strict';
+const { $, esc } = AG;
+AG.shell({ icon: '🗂️', title: 'Storyboard Google Flow', subtitle: 'Scénario → jusqu\'à 100 plans : première image + prompt vidéo Veo prêt à coller' });
+const STEPS = ['Analyse', 'Structure', 'Plans', 'Images'];
+const S = { ref: null, cast: '', sb: null, shots: [] };
+['scenario', 'look'].forEach(id => { $(id).value = AG.store.get('sb_' + id, ''); $(id).oninput = () => AG.store.set('sb_' + id, $(id).value); });
+AG.dropzone($('drop'), ([u]) => { S.ref = u; S.cast = ''; $('analysis').hidden = true; $('thumbs').innerHTML = '<figure><img src="' + u + '"><button data-x>✕</button></figure>'; });
+$('thumbs').onclick = e => { if (e.target.matches('[data-x]')) { e.stopPropagation(); S.ref = null; S.cast = ''; $('thumbs').innerHTML = ''; $('analysis').hidden = true; } };
+
+const draw = AG.throttle(() => {
+  if (!S.sb) return;
+  $('board').innerHTML = S.shots.map((s, i) => AG.tile({ id: i, label: String(i + 1).padStart(3, '0') + ' · ' + s.type, text: s.action + ' — ' + s.video, img: s.img, st: s.st, msg: s.msg }, { ratio: S.ratio, retry: true, tools: [{ a: 'cp', label: '📋 Prompt Flow' }, { a: 'redo', label: '↻', when: it => it.st !== 'run' && S.withImg }, { a: 'dl', label: '⬇', when: it => it.img }] })).join('');
+  const n = S.shots.length || 1;
+  $('bar').style.width = Math.round(S.withImg ? S.shots.filter(s => s.img).length / n * 100 : 100) + '%';
+  $('txt').disabled = $('csv').disabled = !S.shots.length; $('dl').disabled = !S.shots.some(s => s.img);
+});
+function setStatus(t, p) { $('status').textContent = t; $('pill').textContent = p || 'en cours'; $('pill').className = 'pill ' + (p === 'terminé' ? 'ok' : 'run'); }
+function busy(on) { $('go').disabled = on; $('stop').hidden = !on; }
+
+const SYS = 'Tu es un réalisateur, scénariste et chef opérateur de classe mondiale qui prépare un storyboard pour la génération vidéo IA (Google Flow / Veo). JSON strict uniquement.';
+async function analyze() {
+  const j = await AG.chatJSON({ system: 'Directeur de casting. JSON strict.', user: 'Décris ce protagoniste pour qu\'il soit identique dans 100 plans. JSON (ANGLAIS) : {"name":"prénom inventé","look":"face, hair, age, skin, body, outfit, colors — 40-60 words"}', images: [S.ref], max: 600, temp: 0.2 });
+  S.cast = (j.name || 'The protagonist') + ': ' + (j.look || '');
+  $('analysis').hidden = false; $('analysis').textContent = S.cast;
+}
+async function structure(n) {
+  const acts = 5;
+  const j = await AG.chatJSON({ system: SYS, user: 'SCÉNARIO :\n"""' + $('scenario').value.trim().slice(0, 6000) + '"""\n' + (S.cast ? 'PROTAGONISTE : ' + S.cast + '\n' : '') + 'Découpe ce film en ' + acts + ' actes pour ' + n + ' plans au total. JSON : {"title":"","style":"English global visual style (lighting, lens, palette, grain)","acts":[{"beat":"résumé FR de l\'acte","shots":' + Math.round(n / acts) + '}]}', max: 2500, temp: 0.7 });
+  const st = Array.isArray(j.acts) && j.acts.length ? j.acts.slice(0, acts) : Array.from({ length: acts }, (_, i) => ({ beat: 'Acte ' + (i + 1) }));
+  return { title: j.title || 'Storyboard', style: ($('look').value.trim() ? $('look').value.trim() + '. ' : '') + (j.style || ''), acts: st };
+}
+async function writeAct(act, k, per, total, prevSummary) {
+  const tail = ' No music. Only French dialogue and natural sound effects. Duration ' + S.secs + ' seconds. ' + (S.ratio === '9:16' ? 'Vertical 9:16.' : 'Horizontal 16:9.');
+  const j = await AG.chatJSON({ system: SYS, user: 'Film : ' + S.sb.title + '. Style : ' + S.sb.style + '\n' + (S.cast ? 'PROTAGONISTE (décris-le physiquement dans chaque prompt où il apparaît) : ' + S.cast + '\n' : '')
+    + 'Scénario complet :\n"""' + $('scenario').value.trim().slice(0, 4000) + '"""\nActe ' + (k + 1) + ' / ' + S.sb.acts.length + ' : ' + act.beat + (prevSummary ? '\nActe précédent : ' + prevSummary : '')
+    + '\nÉcris EXACTEMENT ' + per + ' plans pour cet acte (plans n° ' + (k * per + 1) + ' à ' + Math.min(total, (k + 1) * per) + '). Varie les valeurs de plan (large, moyen, gros plan, insert, plongée…).'
+    + '\nChaque plan : "type" (valeur de plan FR), "action" (ce qui se passe, FR, 1 phrase), "dialogue" (réplique FR ou ""), "image" (prompt ANGLAIS 50-80 mots de la PREMIÈRE IMAGE du plan : sujet, décor, lumière, objectif, style), "video" (prompt ANGLAIS 55-75 mots pour Veo : sujet + action + mouvement de caméra + lumière + ambiance, avec la réplique française entre guillemets si dialogue).'
+    + '\nJSON : {"shots":[{"type":"","action":"","dialogue":"","image":"","video":""}]}', max: 12000, temp: 0.85 });
+  return (Array.isArray(j.shots) ? j.shots : []).slice(0, per).map(s => ({ type: s.type || 'plan', action: s.action || '', dialogue: s.dialogue || '', image: s.image || s.action || '', video: (s.video || 'Cinematic slow camera move, natural lighting, film grain.').replace(/\s*No music[\s\S]*$/i, '') + tail, st: 'wait' }));
+}
+async function genImg(s) {
+  try { s.st = 'run'; s.msg = ''; s.img = null; draw(); s.img = await AG.image(s.image + '. ' + S.sb.style + (S.ref ? ' When the protagonist appears, keep the exact face and outfit of the reference image.' : '') + ' Cinematic film still, no text, no watermark.', { refs: S.ref ? [S.ref] : [], ratio: S.ratio }); s.st = 'ok'; }
+  catch (e) { if (AG.isStop(e)) { s.st = 'wait'; throw e; } if (e.fatal) throw e; s.st = 'err'; s.msg = e.message.slice(0, 60); AG.log('err', e.message); }
+  finally { draw(); }
+}
+async function pipeline() {
+  const n = +$('n').value;
+  S.secs = +$('secs').value; S.ratio = $('ratio').value; S.withImg = $('imgs').checked;
+  AG.steps($('steps'), STEPS, 0);
+  if (S.ref && !S.cast) { setStatus('Analyse du protagoniste…'); try { await analyze(); } catch (e) { if (AG.isStop(e) || e.fatal) throw e; AG.log('warn', 'Analyse : ' + e.message); } }
+  AG.steps($('steps'), STEPS, 1); setStatus('Structure en actes…');
+  S.sb = await structure(n); S.shots = []; $('title').textContent = S.sb.title;
+  AG.steps($('steps'), STEPS, 2); setStatus('Écriture des ' + n + ' plans (actes en parallèle)…');
+  const per = Math.ceil(n / S.sb.acts.length);
+  const parts = await AG.pool(S.sb.acts, S.sb.acts.length, (act, k) => writeAct(act, k, per, n, k ? S.sb.acts[k - 1].beat : ''));
+  parts.forEach((p, k) => { if (!p.ok) AG.log('err', 'Acte ' + (k + 1) + ' : ' + p.error.message); });
+  S.shots = parts.flatMap(p => p.ok ? p.value : []).slice(0, n);
+  if (!S.shots.length) throw new Error('Aucun plan écrit. Réessayez.');
+  draw();
+  if (S.withImg) { AG.steps($('steps'), STEPS, 3); setStatus('Premières images…'); await AG.pool(S.shots, AG.imgLimit(), genImg); }
+  AG.steps($('steps'), STEPS, 4);
+  setStatus(S.shots.length + ' plans · ' + S.shots.filter(s => s.img).length + ' images', 'terminé');
+}
+$('go').onclick = () => { if ($('scenario').value.trim().length < 30) return AG.toast('Écrivez un scénario (30 caractères minimum)', 'err'); AG.job(pipeline, busy); };
+$('stop').onclick = () => AG.run.stop();
+$('board').onclick = e => {
+  const b = e.target.closest('[data-a]'); if (!b) return;
+  const i = +b.dataset.id, s = S.shots[i];
+  if (b.dataset.a === 'cp') return AG.copy(s.video);
+  if (b.dataset.a === 'dl') return AG.download(s.img, 'plan-' + String(i + 1).padStart(3, '0') + '.jpg');
+  AG.job(() => genImg(s), busy);
+};
+const fileOut = (text, name, type) => AG.download(URL.createObjectURL(new Blob([text], { type })), name);
+$('txt').onclick = () => fileOut(S.sb.title + '\nStyle : ' + S.sb.style + '\n\n' + S.shots.map((s, i) => '── PLAN ' + String(i + 1).padStart(3, '0') + ' · ' + s.type + '\n' + s.action + (s.dialogue ? '\nDialogue : « ' + s.dialogue + ' »' : '') + '\n\nPROMPT FLOW :\n' + s.video + '\n').join('\n'), 'storyboard-flow.txt', 'text/plain;charset=utf-8');
+$('csv').onclick = () => { const q = v => '"' + String(v || '').replace(/"/g, '""') + '"'; fileOut('﻿' + ['plan;type;action;dialogue;prompt_image;prompt_video;image_url'].concat(S.shots.map((s, i) => [i + 1, s.type, s.action, s.dialogue, s.image, s.video, s.img && !s.img.startsWith('data:') ? s.img : ''].map(q).join(';'))).join('\n'), 'storyboard-flow.csv', 'text/csv;charset=utf-8'); };
+$('dl').onclick = () => AG.downloadAll(S.shots.map((s, i) => s.img && { url: s.img, name: 'plan-' + String(i + 1).padStart(3, '0') + '.jpg' }).filter(Boolean));
+AG.steps($('steps'), STEPS, -1);
+</script>
+</body>
+</html>
